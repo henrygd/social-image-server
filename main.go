@@ -2,24 +2,19 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/database"
 )
-
-// type ImageData struct {
-// 	filename string
-// 	date     string
-// }
-
-// type ImageCache map[string]ImageData
 
 func main() {
 	// create folders
@@ -56,15 +51,13 @@ func main() {
 		fmt.Println("width:", supplied_width)
 
 		// validate url
-		if supplied_url == "" {
-			http.Error(w, "url parameter is required", http.StatusBadRequest)
+		validatedUrl, err := validateUrl(supplied_url)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		validUrl := isUrl(supplied_url)
-		if !validUrl {
-			http.Error(w, "invalid url", http.StatusBadRequest)
-			return
-		}
+
+		fmt.Println("validated url:", validatedUrl)
 
 		// set viewport dimensions
 		var viewportWidth int64
@@ -87,7 +80,7 @@ func main() {
 		}
 
 		// check database for image
-		key := fmt.Sprintf("%s-%s-%d", supplied_url, supplied_width, delay)
+		key := fmt.Sprintf("%s-%s-%d", validatedUrl, supplied_width, delay)
 
 		img, err := database.GetImage(key)
 		if err == nil {
@@ -108,15 +101,19 @@ func main() {
 		// capture viewport, returning png
 		if err := chromedp.Run(ctx, chromedp.Tasks{
 			chromedp.EmulateViewport(viewportWidth, viewportHeight),
-			chromedp.Navigate(supplied_url),
+			chromedp.Navigate(validatedUrl),
 			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
 			chromedp.CaptureScreenshot(&buf),
 		}); err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
 
 		if err := os.WriteFile("./data/images/fullScreenshot.png", buf, 0o644); err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
 
 		// add image to database
@@ -124,7 +121,9 @@ func main() {
 			Key:  key,
 			File: "./data/images/fullScreenshot.png",
 		}); err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
 		}
 
 		serveImage(w, r, "./data/images/fullScreenshot.png")
@@ -140,7 +139,26 @@ func serveImage(w http.ResponseWriter, r *http.Request, filename string) {
 	http.ServeFile(w, r, filename)
 }
 
-func isUrl(str string) bool {
-	u, err := url.Parse(str)
-	return err == nil && u.Scheme != "" && u.Host != ""
+func validateUrl(supplied_url string) (string, error) {
+	if supplied_url == "" {
+		return "", errors.New("no url supplied")
+	}
+
+	u, err := url.Parse(supplied_url)
+
+	valid := err == nil && strings.HasPrefix(u.Scheme, "http") && u.Host != ""
+	if !valid {
+		return "", errors.New("invalid url")
+	}
+
+	// check if host is in whitelist
+	domains := os.Getenv("SOCIAL_IMAGE_DOMAINS")
+	if domains != "" && !strings.Contains(domains, u.Host) {
+		return "", errors.New("domain not allowed")
+	}
+
+	// strip query from url
+	supplied_url = strings.Split(supplied_url, "?")[0]
+
+	return supplied_url, nil
 }
