@@ -102,6 +102,13 @@ func main() {
 			return
 		}
 
+		// check that url provides 200 response before generating image
+		ok := checkUrlOk(validatedUrl)
+		if !ok {
+			http.Error(w, "Requested URL not found", http.StatusNotFound)
+			return
+		}
+
 		// create context
 		ctx, cancel := chromedp.NewContext(
 			context.Background(),
@@ -186,4 +193,14 @@ func validateUrl(supplied_url string) (string, error) {
 	supplied_url = strings.Split(supplied_url, "?")[0]
 
 	return supplied_url, nil
+}
+
+// Check if the status code is 200 OK
+func checkUrlOk(validatedUrl string) bool {
+	resp, err := http.Get(validatedUrl)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
