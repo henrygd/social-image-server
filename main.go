@@ -18,6 +18,8 @@ import (
 
 var imgDir = "./data/images"
 
+var lastClean time.Time
+
 func main() {
 	// create folders
 	err := os.MkdirAll(imgDir, 0755)
@@ -44,24 +46,30 @@ func main() {
 	})
 
 	router.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
-		// get supplied_url parameter
-		supplied_url := r.URL.Query().Get("url")
-		supplied_width := r.URL.Query().Get("width")
-		supplied_delay := r.URL.Query().Get("delay")
+		// clean old images every hour
+		now := time.Now()
+		if now.Sub(lastClean) > time.Hour {
+			err = database.Clean(imgDir)
+			if err != nil {
+				log.Println(err)
+			}
+			lastClean = now
+		}
 
-		fmt.Println("url:", supplied_url)
-		fmt.Println("width:", supplied_width)
+		// get supplied_url parameter
+		params := r.URL.Query()
 
 		// validate url
-		validatedUrl, err := validateUrl(supplied_url)
+		validatedUrl, err := validateUrl(params.Get("url"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		fmt.Println("validated url:", validatedUrl)
+		// fmt.Println("validated url:", validatedUrl)
 
 		// set viewport dimensions
+		supplied_width := params.Get("width")
 		var viewportWidth int64
 		var viewportHeight int64
 		if supplied_width != "" {
@@ -76,6 +84,7 @@ func main() {
 		scale := 2200 / float64(viewportWidth)
 
 		// set delay
+		supplied_delay := params.Get("delay")
 		var delay int64
 		if supplied_delay != "" {
 			delay, _ = strconv.ParseInt(supplied_delay, 10, 64)
@@ -85,11 +94,10 @@ func main() {
 		}
 
 		// check database for image
-		key := fmt.Sprintf("%s-%s-%d", validatedUrl, supplied_width, delay)
+		key := fmt.Sprintf("%s-%d-%d", validatedUrl, viewportWidth, delay)
 
 		img, err := database.GetImage(key)
 		if err == nil {
-			fmt.Printf("found image in database: %s - %s", img.File, img.Date)
 			serveImage(w, r, imgDir+img.File)
 			return
 		}
@@ -165,7 +173,7 @@ func validateUrl(supplied_url string) (string, error) {
 	}
 
 	// check if host is in whitelist
-	domains := os.Getenv("SOCIAL_IMAGE_DOMAINS")
+	domains := os.Getenv("ALLOWED_DOMAINS")
 	if domains != "" && !strings.Contains(domains, u.Host) {
 		return "", errors.New("domain not allowed")
 	}
