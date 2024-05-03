@@ -16,9 +16,11 @@ import (
 	"github.com/henrygd/social-image-server/database"
 )
 
+var ImgDir = "./data/images"
+
 func main() {
 	// create folders
-	err := os.MkdirAll("./data/images", 0755)
+	err := os.MkdirAll(ImgDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -85,7 +87,7 @@ func main() {
 		img, err := database.GetImage(key)
 		if err == nil {
 			fmt.Printf("found image in database: %s - %s", img.File, img.Date)
-			serveImage(w, r, img.File)
+			serveImage(w, r, ImgDir+img.File)
 			return
 		}
 
@@ -110,7 +112,14 @@ func main() {
 			return
 		}
 
-		if err := os.WriteFile("./data/images/fullScreenshot.png", buf, 0o644); err != nil {
+		// save image
+		f, err := os.CreateTemp(ImgDir, "*.png")
+		if err != nil {
+			log.Fatal(err)
+		}
+		filepath := f.Name()
+
+		if err := os.WriteFile(filepath, buf, 0o644); err != nil {
 			log.Println(err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
@@ -119,14 +128,14 @@ func main() {
 		// add image to database
 		if _, err := database.AddImage(&database.SocialImage{
 			Key:  key,
-			File: "./data/images/fullScreenshot.png",
+			File: strings.TrimPrefix(filepath, ImgDir),
 		}); err != nil {
 			log.Println(err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		serveImage(w, r, "./data/images/fullScreenshot.png")
+		serveImage(w, r, filepath)
 	})
 
 	// start server
