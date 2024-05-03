@@ -16,15 +16,15 @@ import (
 	"github.com/henrygd/social-image-server/database"
 )
 
-var ImgDir = "./data/images"
+var imgDir = "./data/images"
 
 func main() {
 	// create folders
-	err := os.MkdirAll(ImgDir, 0755)
+	err := os.MkdirAll(imgDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = os.MkdirAll("./data/db", 0755)
+	err = os.MkdirAll(database.DatabaseDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func main() {
 		img, err := database.GetImage(key)
 		if err == nil {
 			fmt.Printf("found image in database: %s - %s", img.File, img.Date)
-			serveImage(w, r, ImgDir+img.File)
+			serveImage(w, r, imgDir+img.File)
 			return
 		}
 
@@ -116,7 +116,7 @@ func main() {
 		}
 
 		// save image
-		f, err := os.CreateTemp(ImgDir, "*.png")
+		f, err := os.CreateTemp(imgDir, "*.png")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -131,7 +131,7 @@ func main() {
 		// add image to database
 		if _, err := database.AddImage(&database.SocialImage{
 			Key:  key,
-			File: strings.TrimPrefix(filepath, ImgDir),
+			File: strings.TrimPrefix(filepath, imgDir),
 		}); err != nil {
 			log.Println(err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)

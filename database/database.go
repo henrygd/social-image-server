@@ -11,6 +11,8 @@ import (
 
 var db *sql.DB
 
+var DatabaseDir = "./data/db"
+
 type SocialImage struct {
 	Key  string
 	File string
@@ -20,15 +22,13 @@ type SocialImage struct {
 func Init() error {
 	log.Println("Initializing database")
 
-	dbPath := "./data/db/social-images.db"
-
 	// make sure directory exists
-	err := os.MkdirAll("./data/db", 0755)
+	err := os.MkdirAll(DatabaseDir, 0755)
 	if err != nil {
 		return err
 	}
 
-	db, err = sql.Open("sqlite", dbPath)
+	db, err = sql.Open("sqlite", DatabaseDir+"/social-images.db")
 	if err != nil {
 		return err
 	}
