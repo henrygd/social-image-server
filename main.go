@@ -72,6 +72,9 @@ func main() {
 		}
 		viewportHeight = viewportWidth * 9 / 16
 
+		// calculate scale to make image 2200px wide
+		scale := 2200 / float64(viewportWidth)
+
 		// set delay
 		var delay int64
 		if supplied_delay != "" {
@@ -102,7 +105,7 @@ func main() {
 
 		// capture viewport, returning png
 		if err := chromedp.Run(ctx, chromedp.Tasks{
-			chromedp.EmulateViewport(viewportWidth, viewportHeight),
+			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 			chromedp.Navigate(validatedUrl),
 			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
 			chromedp.CaptureScreenshot(&buf),
@@ -145,6 +148,7 @@ func main() {
 }
 
 func serveImage(w http.ResponseWriter, r *http.Request, filename string) {
+	// w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, filename)
 }
 
