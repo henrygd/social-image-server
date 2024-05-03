@@ -150,9 +150,13 @@ func main() {
 	})
 
 	// start server
-	log.Println("Starting server on port 8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Println("Starting server on port", port)
 
-	http.ListenAndServe(":8080", router)
+	http.ListenAndServe(":"+port, router)
 }
 
 func serveImage(w http.ResponseWriter, r *http.Request, filename string) {

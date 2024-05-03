@@ -14,7 +14,8 @@ inspired by https://image.social/
 
 ## Environment Variables
 
-| name            | default | description             |
-| --------------- | ------- | ----------------------- |
-| ALLOWED_DOMAINS | -       | List of allowed domains |
-| CACHE_TIME      | 30 days | Time to cache images    |
+| name            | default | description              |
+| --------------- | ------- | ------------------------ |
+| ALLOWED_DOMAINS | -       | List of allowed domains. |
+| CACHE_TIME      | 30 days | Time to cache images.    |
+| PORT            | 8080    | Port to listen on.       |
