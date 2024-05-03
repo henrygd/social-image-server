@@ -94,7 +94,7 @@ func main() {
 		}
 
 		// check database for image
-		key := fmt.Sprintf("%s-%d-%d", validatedUrl, viewportWidth, delay)
+		key := fmt.Sprintf("%s-%d-%d", strings.TrimSuffix(validatedUrl, "/"), viewportWidth, delay)
 
 		img, err := database.GetImage(key)
 		if err == nil {
