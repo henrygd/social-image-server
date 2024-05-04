@@ -2,7 +2,21 @@
 
 Self-hosted server for generating social preview images
 
-inspired by https://image.social/
+Inspired by https://image.social/
+
+## Installation
+
+### Docker
+
+todo
+
+### Binary
+
+todo - must have libvips and browser available
+
+## Usage
+
+Make request to `/get` route with URL parameter `url`.
 
 ## URL Parameters
 
@@ -14,13 +28,12 @@ inspired by https://image.social/
 
 ## Environment Variables
 
-| name                               | default | description                                                           |
-| ---------------------------------- | ------- | --------------------------------------------------------------------- |
-| ALLOWED_DOMAINS                    | -       | List of allowed domains.                                              |
-| CACHE_TIME                         | 30 days | Time to cache images.                                                 |
-| PORT                               | 8080    | Port to listen on.                                                    |
-| REMOTE_URL                         | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL |
-| . For example: ws://localhost:9222 |
+| name            | default | description                                                                                             |
+| --------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| ALLOWED_DOMAINS | -       | List of allowed domains.                                                                                |
+| CACHE_TIME      | 30 days | Time to cache images on server.                                                                         |
+| PORT            | 8080    | Port to listen on.                                                                                      |
+| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. For example: ws://localhost:9222 |
 
 ## Remote Browser Instance
 
@@ -33,7 +46,7 @@ To connect to an existing instance, use the `REMOTE_URL` environment variable.
 Using the chromedp `headless-shell` docker image:
 
 ```sh
-docker run -d -p 9222:9222 --rm chromedp/headless-shell:latest
+docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
 ```
 
 Using Google Chrome:
