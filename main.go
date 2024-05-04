@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/henrygd/social-image-server/database"
 )
 
@@ -30,6 +31,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	log.Println("Setting up libvips")
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
+	vips.Startup(nil)
+	defer vips.Shutdown()
 
 	// create database
 	err = database.Init()
@@ -131,13 +137,28 @@ func main() {
 		}
 
 		// save image
-		f, err := os.CreateTemp(imgDir, "*.png")
+		f, err := os.CreateTemp(imgDir, "*.jpg")
 		if err != nil {
 			log.Fatal(err)
 		}
 		filepath := f.Name()
 
-		if err := os.WriteFile(filepath, buf, 0o644); err != nil {
+		optimized, err := vips.NewImageFromBuffer(buf)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		imagebytes, _, err := optimized.ExportJpeg(&vips.JpegExportParams{
+			Quality:   90,
+			Interlace: true,
+		})
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(filepath, imagebytes, 0o644); err != nil {
 			log.Println(err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
