@@ -128,6 +128,7 @@ func main() {
 		if err := chromedp.Run(ctx, chromedp.Tasks{
 			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 			chromedp.Navigate(validatedUrl),
+			chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
 			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
 			chromedp.CaptureScreenshot(&buf),
 		}); err != nil {
