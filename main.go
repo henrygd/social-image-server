@@ -18,8 +18,8 @@ import (
 )
 
 var imgDir = "./data/images"
-
 var lastClean time.Time
+var remoteUrl = os.Getenv("REMOTE_URL")
 
 func main() {
 	// create folders
@@ -42,6 +42,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 		return
+	}
+
+	// create allocator context for use with creating a browser context later
+	var allocatorContext context.Context
+	if remoteUrl != "" {
+		var cancel context.CancelFunc
+		allocatorContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
+		defer cancel()
 	}
 
 	router := http.NewServeMux()
@@ -116,10 +124,12 @@ func main() {
 		}
 
 		// create context
-		ctx, cancel := chromedp.NewContext(
-			context.Background(),
-			// chromedp.WithDebugf(log.Printf),
-		)
+		var newContext = allocatorContext
+		if newContext == nil {
+			// log.Println("Creating new context (no remote allocator context)")
+			newContext = context.Background()
+		}
+		ctx, cancel := chromedp.NewContext(newContext)
 		defer cancel()
 
 		var buf []byte
