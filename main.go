@@ -109,10 +109,10 @@ func main() {
 		// check database for image
 		dbUrl := strings.TrimSuffix(validatedUrl, "/")
 
-		bustCache := params.Get("key") != "" && (params.Get("key") == os.Getenv("KEY"))
+		regen := params.Get("regen") != "" && (params.Get("regen") == os.Getenv("REGEN_KEY"))
 
-		if bustCache {
-			// if key is provided, delete image from database
+		if regen {
+			// if regen key is provided, delete image from database
 			err = database.DeleteImage(imgDir, dbUrl)
 			if err != nil {
 				log.Println(err)

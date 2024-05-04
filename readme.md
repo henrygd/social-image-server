@@ -20,11 +20,12 @@ Make request to `/get` route with URL parameter `url`.
 
 ## URL Parameters
 
-| name  | default | description                                                        |
-| ----- | ------- | ------------------------------------------------------------------ |
-| url   | -       | URL to generate image for.                                         |
-| width | 1400    | Width of browser viewport in pixels. Does not affect output width. |
-| delay | 0       | Delay in milliseconds before generating image.                     |
+| name  | default | description                                                                   |
+| ----- | ------- | ----------------------------------------------------------------------------- |
+| url   | -       | URL to generate image for.                                                    |
+| width | 1400    | Width of browser viewport in pixels. Output image is scaled to 2200px width.  |
+| delay | 0       | Delay in milliseconds after page load before generating image.                |
+| regen | -       | Clears cache for URL. Must match `REGEN_KEY` value. Don't use in public URLs. |
 
 ## Environment Variables
 
@@ -34,7 +35,7 @@ Make request to `/get` route with URL parameter `url`.
 | CACHE_TIME      | 30 days | Time to cache images on server.                                                                         |
 | PORT            | 8080    | Port to listen on.                                                                                      |
 | REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. For example: ws://localhost:9222 |
-| KEY             | -       | Key used to bust cache for specific URL, if you need to change delay or width.                          |
+| REGEN_KEY       | -       | Key used to clear cache for specific URL if you need to change delay or width.                          |
 
 ## Remote Browser Instance
 
