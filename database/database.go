@@ -36,7 +36,7 @@ func Init() error {
 		return err
 	}
 
-	db, err = sql.Open("sqlite", DatabaseDir+"/social-images.db")
+	db, err = sql.Open("sqlite", DatabaseDir+"/social-image-server.db")
 	if err != nil {
 		return err
 	}
