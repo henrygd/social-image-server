@@ -230,22 +230,22 @@ func validateUrl(supplied_url string) (string, error) {
 		return "", errors.New("no url supplied")
 	}
 
+	if !strings.HasPrefix(supplied_url, "https://") && !strings.HasPrefix(supplied_url, "http://") {
+		supplied_url = "https://" + supplied_url
+	}
+
 	u, err := url.Parse(supplied_url)
 
-	valid := err == nil && strings.HasPrefix(u.Scheme, "http") && u.Host != ""
-	if !valid {
+	if err != nil {
 		return "", errors.New("invalid url")
 	}
 
 	// check if host is in whitelist
 	if allowedDomains != "" && !allowedDomainsMap[u.Host] {
-		return "", errors.New("domain not allowed")
+		return "", errors.New("domain " + u.Host + " not allowed")
 	}
 
-	// strip query from url
-	supplied_url = strings.Split(supplied_url, "?")[0]
-
-	return supplied_url, nil
+	return u.Scheme + "://" + u.Host + u.Path, nil
 }
 
 // Check if the status code is 200 OK
