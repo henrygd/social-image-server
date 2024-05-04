@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -108,12 +107,25 @@ func main() {
 		}
 
 		// check database for image
-		key := fmt.Sprintf("%s-%d-%d", strings.TrimSuffix(validatedUrl, "/"), viewportWidth, delay)
+		dbUrl := strings.TrimSuffix(validatedUrl, "/")
 
-		img, err := database.GetImage(key)
-		if err == nil {
-			serveImage(w, r, imgDir+img.File)
-			return
+		bustCache := params.Get("key") != "" && (params.Get("key") == os.Getenv("KEY"))
+
+		if bustCache {
+			// if key is provided, delete image from database
+			err = database.DeleteImage(imgDir, dbUrl)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			// else check database for cached image
+			img, err := database.GetImage(dbUrl)
+			if err == nil {
+				serveImage(w, r, imgDir+img.File)
+				return
+			}
 		}
 
 		// check that url provides 200 response before generating image
@@ -177,7 +189,7 @@ func main() {
 
 		// add image to database
 		if _, err := database.AddImage(&database.SocialImage{
-			Key:  key,
+			Url:  dbUrl,
 			File: strings.TrimPrefix(filepath, imgDir),
 		}); err != nil {
 			log.Println(err)

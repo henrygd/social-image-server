@@ -17,7 +17,7 @@ var DatabaseDir = "./data/db"
 var cleanInterval = os.Getenv("CACHE_TIME")
 
 type SocialImage struct {
-	Key  string
+	Url  string
 	File string
 	Date string
 }
@@ -43,7 +43,7 @@ func Init() error {
 	_, err = db.ExecContext(
 		context.Background(),
 		`CREATE TABLE IF NOT EXISTS images (
-			key TEXT NOT NULL PRIMARY KEY,
+			url TEXT NOT NULL PRIMARY KEY,
 			file TEXT NOT NULL,
 			date DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
@@ -57,7 +57,7 @@ func Init() error {
 func AddImage(a *SocialImage) (int64, error) {
 	result, err := db.ExecContext(
 		context.Background(),
-		`INSERT INTO images (key, file) VALUES (?,?);`, a.Key, a.File,
+		`INSERT INTO images (url, file) VALUES (?,?);`, a.Url, a.File,
 	)
 	if err != nil {
 		return 0, err
@@ -65,15 +65,15 @@ func AddImage(a *SocialImage) (int64, error) {
 	return result.LastInsertId()
 }
 
-func GetImage(key string) (SocialImage, error) {
+func GetImage(url string) (SocialImage, error) {
 	var socialImage SocialImage
 
 	row := db.QueryRowContext(
 		context.Background(),
-		`SELECT * FROM images WHERE key=?`, key,
+		`SELECT * FROM images WHERE url=?`, url,
 	)
 
-	err := row.Scan(&socialImage.Key, &socialImage.File, &socialImage.Date)
+	err := row.Scan(&socialImage.Url, &socialImage.File, &socialImage.Date)
 
 	return socialImage, err
 }
@@ -94,12 +94,12 @@ func Clean(imgDir string) error {
 
 		var image SocialImage
 		err := rows.Scan(
-			&image.Key, &image.File, &image.Date,
+			&image.Url, &image.File, &image.Date,
 		)
 		if err != nil {
 			return err
 		}
-		// log.Println("Cleaning image", image.Key)
+		// log.Println("Cleaning image", image.url)
 		err = os.Remove(imgDir + image.File)
 		if err != nil {
 			return err
@@ -118,5 +118,32 @@ func Clean(imgDir string) error {
 		return err
 	}
 	log.Println("Deleted", rowsAffected, "images")
+	return nil
+}
+
+func DeleteImage(imgDir string, url string) error {
+	// log.Println("Deleting image", url)
+
+	var image SocialImage
+	row := db.QueryRowContext(
+		context.Background(),
+		`SELECT * FROM images WHERE url=?;`, url,
+	)
+	err := row.Scan(&image.Url, &image.File, &image.Date)
+
+	if err != nil {
+		return err
+	}
+	err = os.Remove(imgDir + image.File)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(
+		context.Background(),
+		`DELETE FROM images WHERE url=?;`, url,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }

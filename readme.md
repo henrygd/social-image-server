@@ -34,6 +34,7 @@ Make request to `/get` route with URL parameter `url`.
 | CACHE_TIME      | 30 days | Time to cache images on server.                                                                         |
 | PORT            | 8080    | Port to listen on.                                                                                      |
 | REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. For example: ws://localhost:9222 |
+| KEY             | -       | Key used to bust cache for specific URL, if you need to change delay or width.                          |
 
 ## Remote Browser Instance
 
