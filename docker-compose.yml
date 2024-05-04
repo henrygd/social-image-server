@@ -1,0 +1,16 @@
+version: '3.9'
+
+services:
+  server:
+    image: 'social-image-server'
+    container_name: 'social-image-server'
+    ports: ['8080:8080']
+    volumes:
+      - ./data:/data
+    environment:
+      - REMOTE_URL=ws://chromedp:9222
+      - REGEN_KEY=x4hkg3ky8b73 # change this
+
+  browser:
+    image: 'chromedp/headless-shell:latest'
+    container_name: 'chromedp'
