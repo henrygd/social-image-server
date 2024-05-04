@@ -19,6 +19,8 @@ import (
 var imgDir = "./data/images"
 var lastClean time.Time
 var remoteUrl = os.Getenv("REMOTE_URL")
+var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
+var allowedDomainsMap = make(map[string]bool)
 
 func main() {
 	// create folders
@@ -41,6 +43,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 		return
+	}
+
+	// create map of allowed allowedDomains for quick lookup
+	for _, domain := range strings.Split(allowedDomains, ",") {
+		domain = strings.TrimSpace(domain)
+		if domain != "" {
+			allowedDomainsMap[domain] = true
+		}
 	}
 
 	// create allocator context for use with creating a browser context later
@@ -228,8 +238,7 @@ func validateUrl(supplied_url string) (string, error) {
 	}
 
 	// check if host is in whitelist
-	domains := os.Getenv("ALLOWED_DOMAINS")
-	if domains != "" && !strings.Contains(domains, u.Host) {
+	if allowedDomains != "" && !allowedDomainsMap[u.Host] {
 		return "", errors.New("domain not allowed")
 	}
 

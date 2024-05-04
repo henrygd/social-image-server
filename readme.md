@@ -31,7 +31,7 @@ Make request to `/get` route with URL parameter `url`.
 
 | name            | default | description                                                                                         |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------- |
-| ALLOWED_DOMAINS | -       | List of allowed domains. Example: "example.com example.org"                                         |
+| ALLOWED_DOMAINS | -       | List of allowed domains. Example: "example.com,example.org"                                         |
 | CACHE_TIME      | 30 days | Time to cache images on server.                                                                     |
 | PORT            | 8080    | Port to listen on.                                                                                  |
 | REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
