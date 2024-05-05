@@ -107,10 +107,11 @@ func main() {
 		} else if viewportWidth < 400 {
 			viewportWidth = 400
 		}
-		viewportHeight = viewportWidth * 9 / 16
+		// force 1.9:1 aspect ratio
+		viewportHeight = int64(float64(viewportWidth) / 1.9)
 
-		// calculate scale to make image 2200px wide
-		scale := 2200 / float64(viewportWidth)
+		// calculate scale to make image 2000px wide
+		scale := 2000 / float64(viewportWidth)
 
 		// set delay
 		supplied_delay := params.Get("delay")
