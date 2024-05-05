@@ -2,11 +2,11 @@ version: '3.9'
 
 services:
   server:
-    image: 'social-image-server'
+    image: 'social-image-server:latest'
     container_name: 'social-image-server'
     ports: ['8080:8080']
-    volumes:
-      - ./data:/data
+    #volumes:
+    #      - ./data:/data
     environment:
       - REMOTE_URL=ws://chromedp:9222
       - REGEN_KEY=x4hkg3ky8b73 # change this
@@ -14,3 +14,5 @@ services:
   browser:
     image: 'chromedp/headless-shell:latest'
     container_name: 'chromedp'
+    command: ['--window-size=1400,900', '--disable-gpu']
+    # entrypoint: [ "/headless-shell/headless-shell", "--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader", "--remote-debugging-address=0.0.0.0", "--remote-debugging-port=9222", "--font-render-hinting=none", "--virtual-time-budget=10000" ]

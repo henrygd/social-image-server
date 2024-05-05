@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"image/jpeg"
-	"image/png"
 	"log"
 	"net/http"
 	"net/url"
@@ -15,6 +12,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/davidbyttow/govips/v2/vips"
 	"github.com/henrygd/social-image-server/database"
 )
 
@@ -35,6 +33,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	log.Println("Setting up libvips")
+	vips.LoggingSettings(nil, vips.LogLevelWarning)
+	vips.Startup(nil)
+	defer vips.Shutdown()
+
 	// create database
 	err = database.Init()
 	if err != nil {
@@ -52,15 +55,16 @@ func main() {
 
 	// create allocator context for use with creating a browser context later
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("--font-render-hinting", "none"),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("font-render-hinting", "none"),
 	)
-	var cancel context.CancelFunc
-	globalContext, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	globalContext, _ := chromedp.NewExecAllocator(context.Background(), opts...)
 	var remoteContext context.Context
 	if remoteUrl != "" {
+		var cancel context.CancelFunc
 		remoteContext, cancel = chromedp.NewRemoteAllocator(globalContext, remoteUrl)
+		defer cancel()
 	}
-	defer cancel()
 
 	router := http.NewServeMux()
 
@@ -146,12 +150,12 @@ func main() {
 			return
 		}
 
-		// create task context
-		var parentContext = remoteContext
-		if parentContext == nil {
-			parentContext = globalContext
+		// create context
+		var newContext = remoteContext
+		if newContext == nil {
+			newContext = globalContext
 		}
-		taskCtx, cancel := chromedp.NewContext(parentContext)
+		taskCtx, cancel := chromedp.NewContext(newContext)
 		defer cancel()
 
 		var buf []byte
@@ -176,14 +180,22 @@ func main() {
 		}
 		filepath := f.Name()
 
-		// Decode the PNG image bytes
-		img, err := png.Decode(bytes.NewReader(buf))
-		// encode the image as a JPEG file
-		buff := new(bytes.Buffer)
-		if err = jpeg.Encode(buff, img, &jpeg.Options{Quality: 88}); err != nil {
+		optimized, err := vips.NewImageFromBuffer(buf)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		if err := os.WriteFile(filepath, buff.Bytes(), 0o644); err != nil {
+		imagebytes, _, err := optimized.ExportJpeg(&vips.JpegExportParams{
+			Quality:   90,
+			Interlace: true,
+		})
+		if err != nil {
+			log.Println(err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(filepath, imagebytes, 0o644); err != nil {
 			log.Println(err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
