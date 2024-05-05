@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image/jpeg"
+	"image/png"
 	"log"
 	"net/http"
 	"net/url"
@@ -12,7 +15,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/davidbyttow/govips/v2/vips"
+	"github.com/chromedp/chromedp/device"
 	"github.com/henrygd/social-image-server/database"
 )
 
@@ -32,11 +35,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	log.Println("Setting up libvips")
-	vips.LoggingSettings(nil, vips.LogLevelWarning)
-	vips.Startup(nil)
-	defer vips.Shutdown()
 
 	// create database
 	err = database.Init()
@@ -125,8 +123,7 @@ func main() {
 			// if regen key is provided, delete image from database
 			err = database.DeleteImage(imgDir, dbUrl)
 			if err != nil {
-				log.Println(err)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				handleServerError(w, err)
 				return
 			}
 		} else {
@@ -157,15 +154,15 @@ func main() {
 		var buf []byte
 
 		// capture viewport, returning png
-		if err := chromedp.Run(ctx, chromedp.Tasks{
+		err = chromedp.Run(taskCtx, chromedp.Tasks{
 			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 			chromedp.Navigate(validatedUrl),
 			chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
 			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
 			chromedp.CaptureScreenshot(&buf),
-		}); err != nil {
-			log.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		})
+		if err != nil {
+			handleServerError(w, err)
 			return
 		}
 
@@ -176,34 +173,31 @@ func main() {
 		}
 		filepath := f.Name()
 
-		optimized, err := vips.NewImageFromBuffer(buf)
+		// decode the png
+		img, err := png.Decode(bytes.NewReader(buf))
 		if err != nil {
-			log.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			handleServerError(w, err)
 			return
 		}
-		imagebytes, _, err := optimized.ExportJpeg(&vips.JpegExportParams{
-			Quality:   90,
-			Interlace: true,
-		})
+		// encode the jpeg
+		buff := new(bytes.Buffer)
+		err = jpeg.Encode(buff, img, &jpeg.Options{Quality: 90})
 		if err != nil {
-			log.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			handleServerError(w, err)
 			return
 		}
-		if err := os.WriteFile(filepath, imagebytes, 0o644); err != nil {
-			log.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		// write image to file
+		err = os.WriteFile(filepath, buff.Bytes(), 0o644)
+		if err != nil {
+			handleServerError(w, err)
 			return
 		}
-
 		// add image to database
 		if _, err := database.AddImage(&database.SocialImage{
 			Url:  dbUrl,
 			File: strings.TrimPrefix(filepath, imgDir),
 		}); err != nil {
-			log.Println(err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			handleServerError(w, err)
 			return
 		}
 
@@ -256,4 +250,9 @@ func checkUrlOk(validatedUrl string) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+func handleServerError(w http.ResponseWriter, err error) {
+	log.Println(err)
+	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 }
