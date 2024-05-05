@@ -1,6 +1,6 @@
-### WIP
+# Social Image Server
 
-Self-hosted server for generating social preview images
+Self-hosted server for generating social / open graph images.
 
 Inspired by https://image.social/
 
