@@ -52,12 +52,16 @@ func main() {
 	}
 
 	// create allocator context for use with creating a browser context later
-	var allocatorContext context.Context
+	var globalContext context.Context
+	var cancel context.CancelFunc
 	if remoteUrl != "" {
-		var cancel context.CancelFunc
-		allocatorContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
-		defer cancel()
+		globalContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
+	} else {
+		globalContext, cancel = chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("font-render-hinting", "none"),
+		)...)
 	}
+	defer cancel()
 
 	router := http.NewServeMux()
 
@@ -142,16 +146,9 @@ func main() {
 			return
 		}
 
-		// create context
-		var newContext = allocatorContext
-		if newContext == nil {
-			// log.Println("Creating new context (no remote allocator context)")
-			newContext = context.Background()
-		}
-		ctx, cancel := chromedp.NewContext(newContext)
+		// create task context
+		taskCtx, cancel := chromedp.NewContext(globalContext)
 		defer cancel()
-
-		var buf []byte
 
 		// capture viewport, returning png
 		err = chromedp.Run(taskCtx, chromedp.Tasks{
