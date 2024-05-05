@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   server:
-    image: 'social-image-server'
+    image: 'henrygd/social-image-server'
     container_name: 'social-image-server'
     ports: ['8080:8080']
     # volumes:
