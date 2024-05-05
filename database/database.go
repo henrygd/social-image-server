@@ -11,9 +11,6 @@ import (
 )
 
 var db *sql.DB
-
-var DatabaseDir = "./data/db"
-
 var cleanInterval = os.Getenv("CACHE_TIME")
 
 type SocialImage struct {
@@ -22,7 +19,7 @@ type SocialImage struct {
 	Date string
 }
 
-func Init() error {
+func Init(dataDir string) error {
 	log.Println("Initializing database")
 
 	// set default clean interval
@@ -30,13 +27,8 @@ func Init() error {
 		cleanInterval = "30 days"
 	}
 
-	// make sure directory exists
-	err := os.MkdirAll(DatabaseDir, 0755)
-	if err != nil {
-		return err
-	}
-
-	db, err = sql.Open("sqlite", DatabaseDir+"/social-image-server.db")
+	var err error
+	db, err = sql.Open("sqlite", dataDir+"/db/social-image-server.db")
 	if err != nil {
 		return err
 	}

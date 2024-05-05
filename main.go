@@ -18,25 +18,29 @@ import (
 	"github.com/henrygd/social-image-server/database"
 )
 
-var imgDir = "./data/images"
+var dataDir = os.Getenv("DATA_DIR")
 var lastClean time.Time
 var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
 
 func main() {
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+	imgDir := dataDir + "/images"
 	// create folders
 	err := os.MkdirAll(imgDir, 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = os.MkdirAll(database.DatabaseDir, 0755)
+	err = os.MkdirAll(dataDir+"/db", 0755)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// create database
-	err = database.Init()
+	err = database.Init(dataDir)
 	if err != nil {
 		log.Fatal(err)
 		return
