@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/chromedp/chromedp/device"
 	"github.com/henrygd/social-image-server/database"
 )
 
@@ -57,8 +56,11 @@ func main() {
 	if remoteUrl != "" {
 		globalContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
 	} else {
+		// var blankOpts []func(*chromedp.ExecAllocator)
 		globalContext, cancel = chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("font-render-hinting", "none"),
+			chromedp.Flag("disable-font-subpixel-positioning", true),
+			chromedp.Flag("system-font-family", "ui-sans-serif"),
 		)...)
 	}
 	defer cancel()
@@ -158,9 +160,10 @@ func main() {
 		// capture viewport, returning png
 		var buf = make([]byte, 0, 200*1024)
 		err = chromedp.Run(taskCtx, chromedp.Tasks{
+			// chromedp.Emulate(device.IPad),
 			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 			chromedp.Navigate(validatedUrl),
-			chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
+			// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
 			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
 			chromedp.CaptureScreenshot(&buf),
 		})
