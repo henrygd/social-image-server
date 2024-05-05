@@ -156,6 +156,7 @@ func main() {
 		defer cancel()
 
 		// capture viewport, returning png
+		var buf = make([]byte, 0, 200*1024)
 		err = chromedp.Run(taskCtx, chromedp.Tasks{
 			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 			chromedp.Navigate(validatedUrl),
