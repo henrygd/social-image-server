@@ -4,15 +4,17 @@ Self-hosted server for generating social preview images
 
 Inspired by https://image.social/
 
+todo: github actions for binary / docker image creation
+
 ## Installation
 
 ### Docker
 
-todo
+[docker-compose.yml](/docker-compose.yml).
 
 ### Binary
 
-todo - must have libvips and browser available
+todo - must have libvips and google chrome available
 
 ## Usage
 
@@ -45,7 +47,7 @@ To connect to an existing instance, use the `REMOTE_URL` environment variable.
 
 ### Examples
 
-Using the chromedp `headless-shell` docker image:
+Using the chromedp `headless-shell` docker image (see [docker-compose.yml](/docker-compose.yml)):
 
 ```sh
 docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
@@ -54,5 +56,5 @@ docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
 Using Google Chrome:
 
 ```sh
-google-chrome-stable --remote-debugging-protocol=9222
+google-chrome-stable --remote-debugging-port=9222
 ```
