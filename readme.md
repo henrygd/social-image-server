@@ -37,15 +37,15 @@ Add the image URL to HTML inside the `head` tag. A useful site for testing and g
 
 ## Environment Variables
 
-| name            | default       | description                                                                                         |
-| --------------- | ------------- | --------------------------------------------------------------------------------------------------- |
-| ALLOWED_DOMAINS | -             | List of allowed domains. Example: "example.com,example.org"                                         |
-| CACHE_TIME      | 30 days       | Time to cache images on server.                                                                     |
-| PORT            | 8080          | Port to listen on.                                                                                  |
-| REMOTE_URL      | -             | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
-| REGEN_KEY       | -             | Key used to bypass cache for specific URL. Use to tweak delay / width.                              |
-| DATA_DIR        | ./data        | Directory to store program data (images and database). Default: `./data`.                           |
-| FONT_FAMILY     | ui-sans-serif | Name of default browser fallback font. Must be available on your system / image.                    |
+| name            | default | description                                                                                         |
+| --------------- | ------- | --------------------------------------------------------------------------------------------------- |
+| ALLOWED_DOMAINS | -       | List of allowed domains. Example: "example.com,example.org"                                         |
+| CACHE_TIME      | 30 days | Time to cache images on server.                                                                     |
+| PORT            | 8080    | Port to listen on.                                                                                  |
+| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
+| REGEN_KEY       | -       | Key used to bypass cache for specific URL. Use to tweak delay / width.                              |
+| DATA_DIR        | ./data  | Directory to store program data (images and database). Default: `./data`.                           |
+| FONT_FAMILY     | -       | Name of browser fallback font. Must be available on your system / image.                            |
 
 ## Remote Browser Instance
 

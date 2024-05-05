@@ -60,16 +60,17 @@ func main() {
 	if remoteUrl != "" {
 		globalContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
 	} else {
-		font := os.Getenv("FONT_FAMILY")
-		if font == "" {
-			font = "ui-sans-serif"
-		}
-		// var blankOpts []func(*chromedp.ExecAllocator)
-		globalContext, cancel = chromedp.NewExecAllocator(context.Background(), append(chromedp.DefaultExecAllocatorOptions[:],
+		opts := append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("font-render-hinting", "none"),
 			chromedp.Flag("disable-font-subpixel-positioning", true),
-			chromedp.Flag("system-font-family", font),
-		)...)
+			chromedp.ExecPath("chromium"),
+		)
+		font := os.Getenv("FONT_FAMILY")
+		if font != "" {
+			opts = append(opts, chromedp.Flag("system-font-family", font))
+		}
+		// var blankOpts []func(*chromedp.ExecAllocator)
+		globalContext, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
 	}
 	defer cancel()
 
