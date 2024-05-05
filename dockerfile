@@ -1,4 +1,4 @@
-FROM golang:alpine as builder
+FROM --platform=$BUILDPLATFORM golang:alpine as builder
 
 WORKDIR /app
 
@@ -10,7 +10,8 @@ COPY *.go ./
 COPY database ./database
 
 # Build
-RUN CGO_ENABLED=0 go build -ldflags "-w -s" -o /social-image-server .
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-w -s" -o /social-image-server .
 
 # ? -------------------------
 FROM alpine:latest
