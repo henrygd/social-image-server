@@ -18,6 +18,14 @@ See the example [docker-compose.yml](/docker-compose.yml). The `chromedp/headles
 
 Make request to `/get` route with URL parameter `url`.
 
+If you need to adjust `width` or `delay` you can use the `regen` parameter, but please remove it from any shared URLs.
+
+Add the image URL to HTML inside the `head` tag. A useful site for testing and generating HTML is [heymeta.com](https://www.heymeta.com/).
+
+```html
+<meta property="og:image" content="https://yourserver.com/get?url=example.com" />
+```
+
 ## URL Parameters
 
 | name  | default | description                                                                                                            |
@@ -60,6 +68,6 @@ google-chrome-stable --remote-debugging-port=9222
 
 ### Troubleshooting
 
-When using `chromedp/headless-shell` with a site that doesn't provide fonts, sans-serif will fall back to DejaVu Sans. This can make the text look different than it does in your browser.
+When using `chromedp/headless-shell` on a site that doesn't provide fonts, sans-serif will fall back to DejaVu Sans. This can make the text look different than it does in your browser.
 
 DejaVu Sans is the only font in the image, so if that's an issue, try using a different headless chrome image, or install chrome on your local machine and use the binary.
