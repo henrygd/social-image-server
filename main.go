@@ -100,8 +100,12 @@ func main() {
 		if supplied_width != "" {
 			viewportWidth, _ = strconv.ParseInt(supplied_width, 10, 64)
 		}
-		if viewportWidth == 0 || viewportWidth > 2400 {
+		if viewportWidth == 0 {
 			viewportWidth = 1400
+		} else if viewportWidth > 2400 {
+			viewportWidth = 2400
+		} else if viewportWidth < 400 {
+			viewportWidth = 400
 		}
 		viewportHeight = viewportWidth * 9 / 16
 
