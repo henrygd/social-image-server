@@ -27,16 +27,16 @@ builds:
       - goos: windows
         goarch: 386
 
-# archives:
-#   - format: tar.gz
-#     name_template: >-
-#       {{ .ProjectName }}_
-#       {{- .Os }}_
-#       {{- .Arch }}
-# use zip for windows archives
-# format_overrides:
-#   - goos: windows
-#     format: zip
+archives:
+  - format: tar.gz
+    #     name_template: >-
+    #       {{ .ProjectName }}_
+    #       {{- .Os }}_
+    #       {{- .Arch }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
 
 changelog:
   sort: asc
