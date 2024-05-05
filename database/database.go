@@ -131,8 +131,10 @@ func DeleteImage(imgDir string, url string) error {
 	)
 	err := row.Scan(&image.Url, &image.File, &image.Date)
 
+	// if we error here, it means image doesn't exist
+	// but that's fine, we'll just return nil
 	if err != nil {
-		return err
+		return nil
 	}
 	err = os.Remove(imgDir + image.File)
 	if err != nil {
