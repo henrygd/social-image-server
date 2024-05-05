@@ -39,7 +39,7 @@ Add the image URL to HTML inside the `head` tag. A useful site for testing and g
 
 | name            | default | description                                                                                         |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------- |
-| ALLOWED_DOMAINS | -       | List of allowed domains. Example: "example.com,example.org"                                         |
+| ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                     |
 | CACHE_TIME      | 30 days | Time to cache images on server.                                                                     |
 | PORT            | 8080    | Port to listen on.                                                                                  |
 | REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
@@ -55,7 +55,7 @@ To connect to an existing instance, use the `REMOTE_URL` environment variable.
 
 ### Examples
 
-Using the chromedp `headless-shell` docker image (see [docker-compose.yml](/docker-compose.yml)):
+Using the chromedp `headless-shell` docker image (see [docker-compose.yml](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml)):
 
 ```sh
 docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
