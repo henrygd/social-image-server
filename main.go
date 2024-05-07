@@ -63,7 +63,6 @@ func main() {
 		opts := append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("font-render-hinting", "none"),
 			chromedp.Flag("disable-font-subpixel-positioning", true),
-			chromedp.ExecPath("chromium"),
 		)
 		font := os.Getenv("FONT_FAMILY")
 		if font != "" {
