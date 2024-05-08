@@ -12,11 +12,11 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/henrygd/social-image-server/database"
+	"github.com/henrygd/social-image-server/internal/concurrency"
+	"github.com/henrygd/social-image-server/internal/database"
 )
 
 var dataDir = os.Getenv("DATA_DIR")
@@ -24,26 +24,6 @@ var lastClean time.Time
 var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
-
-// mutexes to queue mass simultaneous requests of same url
-var urlMutexes = make(map[string]*sync.Mutex)
-var urlMutexesLock sync.Mutex
-
-func getOrCreateMutex(url string) *sync.Mutex {
-	// Lock access to the urlMutexes map
-	urlMutexesLock.Lock()
-	defer urlMutexesLock.Unlock()
-
-	// Check if a mutex already exists for the url
-	if mutex, ok := urlMutexes[url]; ok {
-		return mutex
-	}
-
-	// If mutex doesn't exist, create a new one and add it to the map
-	mutex := &sync.Mutex{}
-	urlMutexes[url] = mutex
-	return mutex
-}
 
 func main() {
 	if dataDir == "" {
@@ -116,7 +96,7 @@ func main() {
 		urlKey := strings.TrimSuffix(validatedUrl, "/")
 
 		// lock the mutex associated with the url
-		mutex := getOrCreateMutex(urlKey)
+		mutex := concurrency.GetOrCreateUrlMutex(urlKey)
 		mutex.Lock()
 		defer mutex.Unlock()
 

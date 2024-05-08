@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY *.go ./
-COPY database ./database
+COPY internal ./internal
 
 # Build
 ARG TARGETOS TARGETARCH
