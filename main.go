@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/internal/concurrency"
 	"github.com/henrygd/social-image-server/internal/database"
@@ -161,16 +162,30 @@ func main() {
 		taskCtx, cancel := chromedp.NewContext(globalContext)
 		defer cancel()
 
-		// capture viewport, returning png
+		tasks := chromedp.Tasks{}
+
+		// set prefers dark mode
+		if params.Get("dark") == "true" {
+			tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+				emulatedMedia := emulation.SetEmulatedMedia()
+				emulatedMedia.Features = append(emulatedMedia.Features, &emulation.MediaFeature{Name: "prefers-color-scheme", Value: "dark"})
+				err = emulatedMedia.Do(ctx)
+				return err
+			}))
+		}
+
+		// navigate to url and capture screenshot to buf
 		var buf = make([]byte, 0, 200*1024)
-		err = chromedp.Run(taskCtx, chromedp.Tasks{
+		tasks = append(tasks,
 			// chromedp.Emulate(device.IPad),
 			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
+			// set prefers dark mode
 			chromedp.Navigate(validatedUrl),
 			// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
-			chromedp.Sleep(time.Duration(delay) * time.Millisecond),
-			chromedp.CaptureScreenshot(&buf),
-		})
+			chromedp.Sleep(time.Duration(delay)*time.Millisecond),
+			chromedp.CaptureScreenshot(&buf))
+
+		err = chromedp.Run(taskCtx, tasks)
 		if err != nil {
 			handleServerError(w, err)
 			return
@@ -223,7 +238,6 @@ func main() {
 		port = "8080"
 	}
 	log.Println("Starting server on port", port)
-
 	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
 	}
