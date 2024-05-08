@@ -265,9 +265,18 @@ func validateUrl(supplied_url string) (string, error) {
 	return u.Scheme + "://" + u.Host + u.Path, nil
 }
 
-// Check if the status code is 200 OK
+// Check if the status code of a url is 200 OK
 func checkUrlOk(validatedUrl string) bool {
-	resp, err := http.Get(validatedUrl)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	req, err := http.NewRequest("GET", validatedUrl, nil)
+	if err != nil {
+		return false
+	}
+
+	// make the request
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}
