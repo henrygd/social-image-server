@@ -18,6 +18,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/internal/concurrency"
 	"github.com/henrygd/social-image-server/internal/database"
+	"github.com/henrygd/social-image-server/internal/scraper"
 )
 
 var dataDir = os.Getenv("DATA_DIR")
@@ -100,7 +101,7 @@ func main() {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		regen := params.Get("regen") != "" && (params.Get("regen") == os.Getenv("REGEN_KEY"))
+		regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY"))
 
 		if regen {
 			// if regen key is provided, delete image from database
@@ -148,12 +149,22 @@ func main() {
 			}
 		}
 
+		suppliedCacheKey := params.Get("cache_key")
+
+		// if cache key set
+		// if cacheKey != "" {
+		// 	cacheKey = uuid.New().String()
+		// }
+
 		// check that url provides 200 response before generating image
-		ok := checkUrlOk(validatedUrl)
+		ok, pageCacheKey := checkUrlOk(validatedUrl, suppliedCacheKey)
 		if !ok {
 			http.Error(w, "Requested URL not found", http.StatusNotFound)
 			return
 		}
+
+		log.Println("suppliedCacheKey", suppliedCacheKey)
+		log.Println("pageCacheKey", pageCacheKey)
 
 		// add og-image-request parameter to url
 		validatedUrl += "?og-image-request=true"
@@ -185,8 +196,7 @@ func main() {
 			chromedp.Sleep(time.Duration(delay)*time.Millisecond),
 			chromedp.CaptureScreenshot(&buf))
 
-		err = chromedp.Run(taskCtx, tasks)
-		if err != nil {
+		if err = chromedp.Run(taskCtx, tasks); err != nil {
 			handleServerError(w, err)
 			return
 		}
@@ -284,22 +294,46 @@ func validateUrl(supplied_url string) (string, error) {
 }
 
 // Check if the status code of a url is 200 OK
-func checkUrlOk(validatedUrl string) bool {
+func checkUrlOk(validatedUrl string, suppliedCacheKey string) (bool, string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 	req, err := http.NewRequest("GET", validatedUrl, nil)
 	if err != nil {
-		return false
+		return false, ""
 	}
 
 	// make the request
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return false, ""
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+
+	// Check if the status code is 200 OK
+	ok := resp.StatusCode == http.StatusOK
+
+	// return if no cache key
+	if suppliedCacheKey == "" {
+		return ok, ""
+	}
+
+	// Parse the HTML response
+	doc, err := scraper.Parse(resp.Body)
+	if err != nil {
+		return false, ""
+	}
+
+	// find og:image meta tag and extract the url
+	ogImageURL := scraper.FindOgUrl(doc)
+	if ogImageURL == "" {
+		return true, ""
+	}
+
+	// extract the cache_key parameter from the og:image url
+	cacheKey, _ := scraper.ExtractCacheKey(ogImageURL)
+	return true, cacheKey
+
 }
 
 func handleServerError(w http.ResponseWriter, err error) {
