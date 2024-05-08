@@ -232,7 +232,9 @@ func main() {
 	}
 	log.Println("Starting server on port", port)
 
-	http.ListenAndServe(":"+port, router)
+	if err := http.ListenAndServe(":"+port, router); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func serveImage(w http.ResponseWriter, r *http.Request, filename string) {
