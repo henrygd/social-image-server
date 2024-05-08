@@ -185,6 +185,9 @@ func main() {
 			return
 		}
 
+		// add og-image-request parameter to url
+		validatedUrl += "?og-image-request=true"
+
 		// create task context
 		taskCtx, cancel := chromedp.NewContext(globalContext)
 		defer cancel()
