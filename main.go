@@ -20,7 +20,6 @@ import (
 )
 
 var dataDir = os.Getenv("DATA_DIR")
-var lastClean time.Time
 var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
@@ -99,16 +98,6 @@ func main() {
 		mutex := concurrency.GetOrCreateUrlMutex(urlKey)
 		mutex.Lock()
 		defer mutex.Unlock()
-
-		// clean old images if last clean was more than an hour ago
-		now := time.Now()
-		if now.Sub(lastClean) > time.Hour {
-			lastClean = now
-			err = database.Clean(imgDir)
-			if err != nil {
-				log.Println(err)
-			}
-		}
 
 		regen := params.Get("regen") != "" && (params.Get("regen") == os.Getenv("REGEN_KEY"))
 
@@ -225,6 +214,9 @@ func main() {
 		serveImage(w, r, filepath)
 	})
 
+	// start cleanup routine
+	go cleanup()
+
 	// start server
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -234,6 +226,18 @@ func main() {
 
 	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
+func cleanup() {
+	for {
+		err := database.Clean(dataDir)
+		if err != nil {
+			log.Println(err)
+		}
+		time.Sleep(time.Hour)
+		concurrency.CleanUrlMutexes(time.Now())
 	}
 }
 

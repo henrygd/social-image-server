@@ -70,8 +70,8 @@ func GetImage(url string) (SocialImage, error) {
 	return socialImage, err
 }
 
-func Clean(imgDir string) error {
-	log.Println("Cleaning database")
+func Clean(dataDir string) error {
+	// log.Println("Cleaning expired images")
 	rows, err := db.QueryContext(
 		context.Background(),
 		fmt.Sprintf(`SELECT * FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval),
@@ -92,7 +92,7 @@ func Clean(imgDir string) error {
 			return err
 		}
 		// log.Println("Cleaning image", image.url)
-		err = os.Remove(imgDir + image.File)
+		err = os.Remove(dataDir + "/images" + image.File)
 		if err != nil {
 			return err
 		}
@@ -109,7 +109,7 @@ func Clean(imgDir string) error {
 	if err != nil {
 		return err
 	}
-	log.Println("Deleted", rowsAffected, "images")
+	log.Println("Cleaned", rowsAffected, "expired images")
 	return nil
 }
 
