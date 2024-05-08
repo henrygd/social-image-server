@@ -44,7 +44,7 @@ Add the image URL to HTML inside the `head` tag. A useful site for testing and g
 | PORT            | 8080    | Port to listen on.                                                                                  |
 | REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
 | REGEN_KEY       | -       | Key used to bypass cache for specific URL. Use to tweak delay / width.                              |
-| DATA_DIR        | ./data  | Directory to store program data (images and database). Default: `./data`.                           |
+| DATA_DIR        | ./data  | Directory to store program data (images and database).                                              |
 | FONT_FAMILY     | -       | Change browser fallback font. Must be available on your system / image.                             |
 
 ## Remote Browser Instance
