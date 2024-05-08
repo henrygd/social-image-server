@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -23,6 +24,26 @@ var lastClean time.Time
 var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
+
+// mutexes to queue mass simultaneous requests of same url
+var urlMutexes = make(map[string]*sync.Mutex)
+var urlMutexesLock sync.Mutex
+
+func getOrCreateMutex(url string) *sync.Mutex {
+	// Lock access to the urlMutexes map
+	urlMutexesLock.Lock()
+	defer urlMutexesLock.Unlock()
+
+	// Check if a mutex already exists for the url
+	if mutex, ok := urlMutexes[url]; ok {
+		return mutex
+	}
+
+	// If mutex doesn't exist, create a new one and add it to the map
+	mutex := &sync.Mutex{}
+	urlMutexes[url] = mutex
+	return mutex
+}
 
 func main() {
 	if dataDir == "" {
@@ -81,16 +102,6 @@ func main() {
 	})
 
 	router.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
-		// clean old images every hour
-		now := time.Now()
-		if now.Sub(lastClean) > time.Hour {
-			err = database.Clean(imgDir)
-			if err != nil {
-				log.Println(err)
-			}
-			lastClean = now
-		}
-
 		// get supplied_url parameter
 		params := r.URL.Query()
 
@@ -101,7 +112,41 @@ func main() {
 			return
 		}
 
-		// fmt.Println("validated url:", validatedUrl)
+		// key for url in database / mutexes
+		urlKey := strings.TrimSuffix(validatedUrl, "/")
+
+		// lock the mutex associated with the url
+		mutex := getOrCreateMutex(urlKey)
+		mutex.Lock()
+		defer mutex.Unlock()
+
+		// clean old images if last clean was more than an hour ago
+		now := time.Now()
+		if now.Sub(lastClean) > time.Hour {
+			lastClean = now
+			err = database.Clean(imgDir)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+
+		regen := params.Get("regen") != "" && (params.Get("regen") == os.Getenv("REGEN_KEY"))
+
+		if regen {
+			// if regen key is provided, delete image from database
+			err = database.DeleteImage(imgDir, urlKey)
+			if err != nil {
+				handleServerError(w, err)
+				return
+			}
+		} else {
+			// else check database for cached image
+			img, err := database.GetImage(urlKey)
+			if err == nil {
+				serveImage(w, r, imgDir+img.File)
+				return
+			}
+		}
 
 		// set viewport dimensions
 		supplied_width := params.Get("width")
@@ -130,27 +175,6 @@ func main() {
 			delay, _ = strconv.ParseInt(supplied_delay, 10, 64)
 			if delay > 10000 {
 				delay = 10000
-			}
-		}
-
-		// check database for image
-		dbUrl := strings.TrimSuffix(validatedUrl, "/")
-
-		regen := params.Get("regen") != "" && (params.Get("regen") == os.Getenv("REGEN_KEY"))
-
-		if regen {
-			// if regen key is provided, delete image from database
-			err = database.DeleteImage(imgDir, dbUrl)
-			if err != nil {
-				handleServerError(w, err)
-				return
-			}
-		} else {
-			// else check database for cached image
-			img, err := database.GetImage(dbUrl)
-			if err == nil {
-				serveImage(w, r, imgDir+img.File)
-				return
 			}
 		}
 
@@ -208,7 +232,7 @@ func main() {
 		}
 		// add image to database
 		if _, err := database.AddImage(&database.SocialImage{
-			Url:  dbUrl,
+			Url:  urlKey,
 			File: strings.TrimPrefix(filepath, imgDir),
 		}); err != nil {
 			handleServerError(w, err)
