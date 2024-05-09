@@ -32,18 +32,18 @@ A useful site for previewing or generating boilerplate is [heymeta.com](https://
 
 ## URL Parameters
 
-| name        | default | description                                                                                                                                                                                   |
-| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`       | -       | URL to generate image for.                                                                                                                                                                    |
-| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to 2000px width.                                                                                                       |
-| `delay`     | 0       | Delay in milliseconds after page load before generating image.                                                                                                                                |
-| `dark`      | false   | Sets prefers-color-scheme to dark.                                                                                                                                                            |
-| `cache_key` | -       | Regenerates image if changed. This is validated using your live URL. If the `cache_key` doesn't match, the server will return a previously cached image (or error if no cached image exists). |
-| `_regen_`   | -       | Do not use in public URLs. Forces full regeneration on every request. Use to manually purge a URL or tweak params, then remove. Must match `REGEN_KEY` value.                                 |
+| Name        | Default | Description                                                                                                                                                                                     |
+| ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`       | -       | URL to generate image for.                                                                                                                                                                      |
+| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to 2000px width.                                                                                                         |
+| `delay`     | 0       | Delay in milliseconds after page load before generating image.                                                                                                                                  |
+| `dark`      | false   | Sets prefers-color-scheme to dark.                                                                                                                                                              |
+| `cache_key` | -       | Regenerates image if changed. This is validated using your origin URL. If the `cache_key` doesn't match, the server will return a previously cached image (or error if no cached image exists). |
+| `_regen_`   | -       | Do not use in public URLs. Forces full regeneration on every request. Use to manually purge a URL or tweak params, then remove. Must match `REGEN_KEY` value.                                   |
 
 ## Environment Variables
 
-| name            | default | description                                                                                         |
+| Name            | Default | Description                                                                                         |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------- |
 | ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                     |
 | CACHE_TIME      | 30 days | Time to cache images on server.                                                                     |
@@ -86,3 +86,23 @@ Likely because the website isn't providing fonts over the network and the browse
 When using `chromedp/headless-shell`, sans-serif will fall back to DejaVu Sans, because it's the only font in the image. If that's an issue, try a different headless chrome image, or running a native Chrome installation with the `--remote-debugging-port` option.
 
 It may be possible to mount local fonts in the `headless-shell` container, but I haven't tested that.
+
+## Response headers
+
+The server includes status headers for successful image requests. These are useful for debugging.
+
+### X-Og-Cache
+
+| Value | Description             |
+| ----- | ----------------------- |
+| HIT   | Cached image was served |
+| MISS  | New image was generated |
+
+### X-Og-Code
+
+| Value | Description                                                                          |
+| ----- | ------------------------------------------------------------------------------------ |
+| 0     | New image generated because it did not exist in cache                                |
+| 1     | New image generated due to `_regen_` parameter                                       |
+| 2     | Found matching cached image                                                          |
+| 3     | `cache_key` does not match `cache_key` on origin URL. Using previously cached image. |

@@ -111,7 +111,7 @@ func main() {
 			}
 			// take screenshot
 			if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
-				serveImage(w, r, filepath)
+				serveImage(w, r, filepath, "MISS", "1")
 			} else {
 				handleServerError(w, err)
 			}
@@ -126,7 +126,7 @@ func main() {
 			// if no cache_key in request and found cached image, return cached image
 			// if cache_key param matches db cache key, return cached image
 			if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
-				serveImage(w, r, global.ImageDir+cachedImage.File)
+				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "2")
 				return
 			}
 		}
@@ -146,17 +146,17 @@ func main() {
 		if paramCacheKey != "" && pageCacheKey != paramCacheKey {
 			// return cached image if it exists
 			if cachedImage.File != "" {
-				serveImage(w, r, global.ImageDir+cachedImage.File)
+				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "3")
 				return
 			}
 			// if no cached image, return error
-			http.Error(w, "request cache_key does not match url cache_key", http.StatusBadRequest)
+			http.Error(w, "request cache_key does not match origin cache_key", http.StatusBadRequest)
 			return
 		}
 
 		// if request doesn't meet above conditions, take screenshot
 		if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
-			serveImage(w, r, filepath)
+			serveImage(w, r, filepath, "MISS", "0")
 		} else {
 			handleServerError(w, err)
 		}
@@ -285,8 +285,10 @@ func cleanup() {
 	}
 }
 
-func serveImage(w http.ResponseWriter, r *http.Request, filename string) {
+func serveImage(w http.ResponseWriter, r *http.Request, filename, status, code string) {
 	// w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("X-Og-Cache", status)
+	w.Header().Set("X-Og-Code", code)
 	http.ServeFile(w, r, filename)
 }
 
