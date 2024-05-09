@@ -12,28 +12,34 @@ You can download and run the latest binary from the [releases page](https://gith
 
 ### Docker
 
-See the example [docker-compose.yml](/docker-compose.yml). The `chromedp/headless-shell` is needed to provide a Chrome instance. Other headless Chrome images should work but seem to be much larger.
+See the example [docker-compose.yml](/docker-compose.yml). The `chromedp/headless-shell` is needed to provide a browser instance. Other headless Chrome images should work but seem to be much larger.
+
+It may be possible to use a native Chrome installation by giving the container access to your host ports and running Chrome with the `--remote-debugging-port` flag.
 
 ## Usage
 
-Make request to `/get` route with URL parameter `url`.
+The `/get` endpoint generates an image for any URL you pass in via the `url` query parameter.
 
-If you need to adjust `width` or `delay` you can use the `regen` parameter, but please remove it from any shared URLs.
-
-Add the image URL to HTML inside the `head` tag. A useful site for testing and generating HTML is [heymeta.com](https://www.heymeta.com/).
+Add an `og:image` meta tag into the `<head>` of your website.
 
 ```html
 <meta property="og:image" content="https://yourserver.com/get?url=example.com" />
 ```
 
+Ideally you want to use this in a layout template that will generate the correct URL for each page.
+
+A useful site for previewing or generating boilerplate is [heymeta.com](https://www.heymeta.com/).
+
 ## URL Parameters
 
-| name  | default | description                                                                                                            |
-| ----- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| url   | -       | URL to generate image for.                                                                                             |
-| width | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to 2000px width.                                |
-| delay | 0       | Delay in milliseconds after page load before generating image.                                                         |
-| regen | -       | Bypasses and clears cache for URL. Use to tweak delay / width. Must match `REGEN_KEY` value. Don't use in public URLs. |
+| name        | default | description                                                                                                                                                                                   |
+| ----------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`       | -       | URL to generate image for.                                                                                                                                                                    |
+| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to 2000px width.                                                                                                       |
+| `delay`     | 0       | Delay in milliseconds after page load before generating image.                                                                                                                                |
+| `dark`      | false   | Sets prefers-color-scheme to dark.                                                                                                                                                            |
+| `cache_key` | -       | Regenerates image if changed. This is validated using your live URL. If the `cache_key` doesn't match, the server will return a previously cached image (or error if no cached image exists). |
+| `_regen_`   | -       | Do not use in public URLs. Forces full regeneration on every request. Use to manually purge a URL or tweak params, then remove. Must match `REGEN_KEY` value.                                 |
 
 ## Environment Variables
 
@@ -61,16 +67,22 @@ Using the chromedp `headless-shell` docker image (see [docker-compose.yml](https
 docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
 ```
 
-Using Chrome directly:
+Using Chrome directly (most flags are from [chromedp's default options](https://pkg.go.dev/github.com/chromedp/chromedp@v0.9.5#pkg-variables)):
 
 ```sh
-google-chrome-stable --remote-debugging-port=9222
+google-chrome-stable --remote-debugging-port=9222 --headless=new --hide-scrollbars --font-render-hinting=none --disable-background-networking --enable-features=NetworkService,NetworkServiceInProcess --disable-extensions --disable-breakpad --disable-backgrounding-occluded-windows --disable-default-apps --disable-background-timer-throttling --disable-features=site-per-process,Translate,BlinkGenPropertyTrees --disable-hang-monitor --disable-client-side-phishing-detection --disable-popup-blocking --disable-prompt-on-repost --disable-sync --disable-translate --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain
 ```
 
-### Troubleshooting
+## Frequently Asked Questions
 
-When using `chromedp/headless-shell` on a site that doesn't provide fonts, sans-serif will fall back to DejaVu Sans. This can make the text look different than it does in your browser.
+### How can I add custom styles or scripts when the screenshot is taken?
 
-DejaVu Sans is the only font in the image, so if that's an issue, try using a different headless chrome image, or install chrome on your local machine and use the binary.
+The server's outgoing request to websites always includes the URL parameter `og-image-request=true`, so check for that.
 
-It may be possible to mount local fonts in the `headless-shell` container, but I haven't tested that yet.
+### Why does the image look different than in my browser?
+
+Likely because the website isn't providing fonts over the network and the browser is using a different default font than your personal setup. If you're using a native browser installation, you may be able to force the font using the `FONT_FAMILY` environment variable.
+
+When using `chromedp/headless-shell`, sans-serif will fall back to DejaVu Sans, because it's the only font in the image. If that's an issue, try a different headless chrome image, or running a native Chrome installation with the `--remote-debugging-port` option.
+
+It may be possible to mount local fonts in the `headless-shell` container, but I haven't tested that.
