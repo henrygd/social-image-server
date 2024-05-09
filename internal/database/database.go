@@ -1,12 +1,13 @@
 package database
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
+	"github.com/henrygd/social-image-server/internal/global"
 	_ "modernc.org/sqlite"
 )
 
@@ -14,12 +15,13 @@ var db *sql.DB
 var cleanInterval = os.Getenv("CACHE_TIME")
 
 type SocialImage struct {
-	Url  string
-	File string
-	Date string
+	Url      string
+	File     string
+	Date     string
+	CacheKey string
 }
 
-func Init(dataDir string) error {
+func Init() error {
 	log.Println("Initializing database")
 
 	// set default clean interval
@@ -28,12 +30,11 @@ func Init(dataDir string) error {
 	}
 
 	var err error
-	db, err = sql.Open("sqlite", dataDir+"/db/social-image-server.db")
+	db, err = sql.Open("sqlite", global.DatabaseDir+"/social-image-server.db")
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(
-		context.Background(),
+	_, err = db.Exec(
 		`CREATE TABLE IF NOT EXISTS images (
 			url TEXT NOT NULL PRIMARY KEY,
 			file TEXT NOT NULL,
@@ -43,101 +44,102 @@ func Init(dataDir string) error {
 	if err != nil {
 		return err
 	}
+	runDatabaseUpdates()
 	return nil
 }
 
-func AddImage(a *SocialImage) (int64, error) {
-	result, err := db.ExecContext(
-		context.Background(),
-		`INSERT INTO images (url, file) VALUES (?,?);`, a.Url, a.File,
+func AddImage(img *SocialImage) error {
+	// check if row with the same URL exists
+	var file string
+	row := db.QueryRow(
+		`SELECT file FROM images WHERE url=?;`, img.Url,
 	)
-	if err != nil {
-		return 0, err
+	err := row.Scan(&file)
+	if err != nil && err != sql.ErrNoRows {
+		return err
 	}
-	return result.LastInsertId()
+
+	// If old row exists, update row and delete old file
+	if file != "" {
+		_, err = db.Exec("UPDATE images SET file = ?, cache_key = ? WHERE url = ?", img.File, img.CacheKey, img.Url)
+		if err != nil {
+			return err
+		}
+		if err = os.Remove(global.ImageDir + file); err != nil {
+			return err
+		}
+		log.Println("Updated old image for", img.Url)
+		return nil
+	}
+
+	_, err = db.Exec("INSERT INTO images (url, file, cache_key) VALUES (?, ?, ?)", img.Url, img.File, img.CacheKey)
+	if err != nil {
+		return err
+	}
+	fmt.Println("New row inserted for URL:", img.Url)
+
+	return nil
 }
 
 func GetImage(url string) (SocialImage, error) {
-	var socialImage SocialImage
+	var image SocialImage
 
-	row := db.QueryRowContext(
-		context.Background(),
-		`SELECT * FROM images WHERE url=?`, url,
-	)
+	row := db.QueryRow(`SELECT * FROM images WHERE url=?`, url)
 
-	err := row.Scan(&socialImage.Url, &socialImage.File, &socialImage.Date)
+	err := row.Scan(&image.Url, &image.File, &image.Date, &image.CacheKey)
+	if err != nil && err != sql.ErrNoRows {
+		log.Println(err)
+	}
 
-	return socialImage, err
+	return image, err
 }
 
-func Clean(dataDir string) error {
-	// log.Println("Cleaning expired images")
-	rows, err := db.QueryContext(
-		context.Background(),
-		fmt.Sprintf(`SELECT * FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval),
-	)
+func Clean() error {
+	// grab rows so we can delete the files
+	rows, err := db.Query(fmt.Sprintf(`SELECT file FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval))
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
-
-	// loop rows
+	files := []string{}
+	// loop rows to delete files
 	for rows.Next() {
-
-		var image SocialImage
-		err := rows.Scan(
-			&image.Url, &image.File, &image.Date,
-		)
-		if err != nil {
+		var file string
+		if err := rows.Scan(&file); err != nil {
 			return err
 		}
-		// log.Println("Cleaning image", image.url)
-		err = os.Remove(dataDir + "/images" + image.File)
-		if err != nil {
-			return err
-		}
+		files = append(files, file)
 	}
 	// delete rows
-	res, err := db.ExecContext(
-		context.Background(),
+	_, err = db.Exec(
 		fmt.Sprintf(`DELETE FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval),
 	)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return err
+	// delete files
+	for _, file := range files {
+		if err = os.Remove(global.ImageDir + file); err != nil {
+			return err
+		}
 	}
-	log.Println("Cleaned", rowsAffected, "expired images")
+	log.Println("Cleaned", len(files), "expired images")
 	return nil
 }
 
-func DeleteImage(imgDir string, url string) error {
-	// log.Println("Deleting image", url)
-
-	var image SocialImage
-	row := db.QueryRowContext(
-		context.Background(),
-		`SELECT * FROM images WHERE url=?;`, url,
-	)
-	err := row.Scan(&image.Url, &image.File, &image.Date)
-
-	// if we error here, it means image doesn't exist
-	// but that's fine, we'll just return nil
+// needed to add cache_key col between 0.0.3 and 0.0.4 releases
+//
+// move to init function on major release
+func runDatabaseUpdates() {
+	_, err := db.Exec(`ALTER TABLE images ADD COLUMN cache_key TEXT NOT NULL`)
 	if err != nil {
-		return nil
+		if !strings.Contains(err.Error(), "duplicate column") {
+			log.Fatal("Error adding cache_key column:", err)
+		}
 	}
-	err = os.Remove(imgDir + image.File)
+	// add index to url column
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS url_index ON images (url)`)
 	if err != nil {
-		return err
+		log.Fatal("Error creating index:", err)
 	}
-	_, err = db.ExecContext(
-		context.Background(),
-		`DELETE FROM images WHERE url=?;`, url,
-	)
-	if err != nil {
-		return err
-	}
-	return nil
 }

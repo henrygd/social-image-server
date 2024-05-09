@@ -18,32 +18,30 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/internal/concurrency"
 	"github.com/henrygd/social-image-server/internal/database"
+	"github.com/henrygd/social-image-server/internal/global"
 	"github.com/henrygd/social-image-server/internal/scraper"
 )
 
-var dataDir = os.Getenv("DATA_DIR")
 var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
 
 func main() {
-	if dataDir == "" {
-		dataDir = "./data"
+	if global.DataDir == "" {
+		global.DataDir = "./data"
 	}
-	imgDir := dataDir + "/images"
+	global.ImageDir = global.DataDir + "/images"
+	global.DatabaseDir = global.DataDir + "/db"
 	// create folders
-	err := os.MkdirAll(imgDir, 0755)
-	if err != nil {
+	if err := os.MkdirAll(global.ImageDir, 0755); err != nil {
 		log.Fatal(err)
 	}
-	err = os.MkdirAll(dataDir+"/db", 0755)
-	if err != nil {
+	if err := os.MkdirAll(global.DatabaseDir, 0755); err != nil {
 		log.Fatal(err)
 	}
 
 	// create database
-	err = database.Init(dataDir)
-	if err != nil {
+	if err := database.Init(); err != nil {
 		log.Fatal(err)
 		return
 	}
@@ -97,34 +95,63 @@ func main() {
 		urlKey := strings.TrimSuffix(validatedUrl, "/")
 
 		// lock the mutex associated with the url
+		// todo maybe change the url mutex map to store other useful things
+		// like status to avoid re-requests, or html for one min to avoid DoS
 		mutex := concurrency.GetOrCreateUrlMutex(urlKey)
 		mutex.Lock()
 		defer mutex.Unlock()
 
 		regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY"))
+		paramCacheKey := params.Get("cache_key")
 
-		if regen {
-			// if regen key is provided, delete image from database
-			err = database.DeleteImage(imgDir, urlKey)
-			if err != nil {
-				handleServerError(w, err)
-				return
-			}
-		} else {
+		var cachedImage database.SocialImage
+		if !regen {
 			// else check database for cached image
-			img, err := database.GetImage(urlKey)
-			if err == nil {
-				serveImage(w, r, imgDir+img.File)
-				return
+			cachedImage, _ = database.GetImage(urlKey)
+			// has cached image
+			if cachedImage.File != "" {
+				// if no cache_key in request and found c	ached image, return cached image
+				// if cache_key param matches db cache key, return cached image
+				if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
+					serveImage(w, r, global.ImageDir+cachedImage.File)
+					return
+				}
 			}
 		}
 
+		// should only get here if
+		// 1. regen key is provided
+		// 2. image is not cached
+		// 3. cache_key param is provided and doesn't match db cache key
+
+		// check url response and cache_key before using browser
+		ok, pageCacheKey := checkUrlOk(validatedUrl)
+		if !ok {
+			http.Error(w, "Requested URL not found", http.StatusNotFound)
+			return
+		}
+
+		// if request has cache_key but pageCacheKey doesn't match
+		if paramCacheKey != "" && pageCacheKey != paramCacheKey && !regen {
+			// return cached image if it exists
+			if cachedImage.File != "" {
+				serveImage(w, r, global.ImageDir+cachedImage.File)
+				return
+			}
+			// if no cached image, return error
+			http.Error(w, "request cache_key does not match url cache_key", http.StatusBadRequest)
+			return
+		}
+
+		// add og-image-request parameter to url
+		validatedUrl += "?og-image-request=true"
+
 		// set viewport dimensions
-		supplied_width := params.Get("width")
+		paramWidth := params.Get("width")
 		var viewportWidth int64
 		var viewportHeight int64
-		if supplied_width != "" {
-			viewportWidth, _ = strconv.ParseInt(supplied_width, 10, 64)
+		if paramWidth != "" {
+			viewportWidth, _ = strconv.ParseInt(paramWidth, 10, 64)
 		}
 		if viewportWidth == 0 {
 			viewportWidth = 1400
@@ -140,34 +167,14 @@ func main() {
 		scale := 2000 / float64(viewportWidth)
 
 		// set delay
-		supplied_delay := params.Get("delay")
+		paramDelay := params.Get("delay")
 		var delay int64
-		if supplied_delay != "" {
-			delay, _ = strconv.ParseInt(supplied_delay, 10, 64)
+		if paramDelay != "" {
+			delay, _ = strconv.ParseInt(paramDelay, 10, 64)
 			if delay > 10000 {
 				delay = 10000
 			}
 		}
-
-		suppliedCacheKey := params.Get("cache_key")
-
-		// if cache key set
-		// if cacheKey != "" {
-		// 	cacheKey = uuid.New().String()
-		// }
-
-		// check that url provides 200 response before generating image
-		ok, pageCacheKey := checkUrlOk(validatedUrl, suppliedCacheKey)
-		if !ok {
-			http.Error(w, "Requested URL not found", http.StatusNotFound)
-			return
-		}
-
-		log.Println("suppliedCacheKey", suppliedCacheKey)
-		log.Println("pageCacheKey", pageCacheKey)
-
-		// add og-image-request parameter to url
-		validatedUrl += "?og-image-request=true"
 
 		// create task context
 		taskCtx, cancel := chromedp.NewContext(globalContext)
@@ -202,21 +209,21 @@ func main() {
 		}
 
 		// save image
-		f, err := os.CreateTemp(imgDir, "*.jpg")
+		f, err := os.CreateTemp(global.ImageDir, "*.jpg")
 		if err != nil {
 			log.Fatal(err)
 		}
 		filepath := f.Name()
 
 		// decode the png
-		img, err := png.Decode(bytes.NewReader(buf))
+		decodedPng, err := png.Decode(bytes.NewReader(buf))
 		if err != nil {
 			handleServerError(w, err)
 			return
 		}
 		// encode the jpeg
 		buff := new(bytes.Buffer)
-		err = jpeg.Encode(buff, img, &jpeg.Options{Quality: 90})
+		err = jpeg.Encode(buff, decodedPng, &jpeg.Options{Quality: 90})
 		if err != nil {
 			handleServerError(w, err)
 			return
@@ -228,10 +235,13 @@ func main() {
 			return
 		}
 		// add image to database
-		if _, err := database.AddImage(&database.SocialImage{
-			Url:  urlKey,
-			File: strings.TrimPrefix(filepath, imgDir),
-		}); err != nil {
+		err = database.AddImage(&database.SocialImage{
+			Url:      urlKey,
+			File:     strings.TrimPrefix(filepath, global.ImageDir),
+			CacheKey: pageCacheKey,
+		})
+		if err != nil {
+			log.Println(err)
 			handleServerError(w, err)
 			return
 		}
@@ -256,8 +266,7 @@ func main() {
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
 func cleanup() {
 	for {
-		err := database.Clean(dataDir)
-		if err != nil {
+		if err := database.Clean(); err != nil {
 			log.Println(err)
 		}
 		time.Sleep(time.Hour)
@@ -294,7 +303,7 @@ func validateUrl(supplied_url string) (string, error) {
 }
 
 // Check if the status code of a url is 200 OK
-func checkUrlOk(validatedUrl string, suppliedCacheKey string) (bool, string) {
+func checkUrlOk(validatedUrl string) (bool, string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -311,11 +320,8 @@ func checkUrlOk(validatedUrl string, suppliedCacheKey string) (bool, string) {
 	defer resp.Body.Close()
 
 	// Check if the status code is 200 OK
-	ok := resp.StatusCode == http.StatusOK
-
-	// return if no cache key
-	if suppliedCacheKey == "" {
-		return ok, ""
+	if ok := resp.StatusCode == http.StatusOK; !ok {
+		return false, ""
 	}
 
 	// Parse the HTML response
