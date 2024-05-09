@@ -26,6 +26,9 @@ var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
 
+// allocator context for use with creating a browser context later
+var globalBrowserContext context.Context
+
 func main() {
 	if global.DataDir == "" {
 		global.DataDir = "./data"
@@ -54,11 +57,9 @@ func main() {
 		}
 	}
 
-	// create allocator context for use with creating a browser context later
-	var globalContext context.Context
 	var cancel context.CancelFunc
 	if remoteUrl != "" {
-		globalContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
+		globalBrowserContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
 	} else {
 		opts := append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("font-render-hinting", "none"),
@@ -69,7 +70,7 @@ func main() {
 			opts = append(opts, chromedp.Flag("system-font-family", font))
 		}
 		// var blankOpts []func(*chromedp.ExecAllocator)
-		globalContext, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
+		globalBrowserContext, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
 	}
 	defer cancel()
 
@@ -101,28 +102,38 @@ func main() {
 		mutex.Lock()
 		defer mutex.Unlock()
 
-		regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY"))
-		paramCacheKey := params.Get("cache_key")
+		// if _regen_ param is set, regenerate screenshot and return
+		if regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY")); regen {
+			ok, pageCacheKey := checkUrlOk(validatedUrl)
+			if !ok {
+				http.Error(w, "Requested URL not found", http.StatusNotFound)
+				return
+			}
+			// take screenshot
+			if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
+				serveImage(w, r, filepath)
+			} else {
+				handleServerError(w, err)
+			}
+			return
+		}
 
-		var cachedImage database.SocialImage
-		if !regen {
-			// else check database for cached image
-			cachedImage, _ = database.GetImage(urlKey)
-			// has cached image
-			if cachedImage.File != "" {
-				// if no cache_key in request and found c	ached image, return cached image
-				// if cache_key param matches db cache key, return cached image
-				if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
-					serveImage(w, r, global.ImageDir+cachedImage.File)
-					return
-				}
+		paramCacheKey := params.Get("cache_key")
+		cachedImage, _ := database.GetImage(urlKey)
+
+		// has cached image
+		if cachedImage.File != "" {
+			// if no cache_key in request and found cached image, return cached image
+			// if cache_key param matches db cache key, return cached image
+			if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
+				serveImage(w, r, global.ImageDir+cachedImage.File)
+				return
 			}
 		}
 
 		// should only get here if
-		// 1. regen key is provided
-		// 2. image is not cached
-		// 3. cache_key param is provided and doesn't match db cache key
+		// 1. image is not cached
+		// 2. cache_key param is provided and doesn't match db cache key
 
 		// check url response and cache_key before using browser
 		ok, pageCacheKey := checkUrlOk(validatedUrl)
@@ -132,7 +143,7 @@ func main() {
 		}
 
 		// if request has cache_key but pageCacheKey doesn't match
-		if paramCacheKey != "" && pageCacheKey != paramCacheKey && !regen {
+		if paramCacheKey != "" && pageCacheKey != paramCacheKey {
 			// return cached image if it exists
 			if cachedImage.File != "" {
 				serveImage(w, r, global.ImageDir+cachedImage.File)
@@ -143,110 +154,12 @@ func main() {
 			return
 		}
 
-		// add og-image-request parameter to url
-		validatedUrl += "?og-image-request=true"
-
-		// set viewport dimensions
-		paramWidth := params.Get("width")
-		var viewportWidth int64
-		var viewportHeight int64
-		if paramWidth != "" {
-			viewportWidth, _ = strconv.ParseInt(paramWidth, 10, 64)
-		}
-		if viewportWidth == 0 {
-			viewportWidth = 1400
-		} else if viewportWidth > 2400 {
-			viewportWidth = 2400
-		} else if viewportWidth < 400 {
-			viewportWidth = 400
-		}
-		// force 1.9:1 aspect ratio
-		viewportHeight = int64(float64(viewportWidth) / 1.9)
-
-		// calculate scale to make image 2000px wide
-		scale := 2000 / float64(viewportWidth)
-
-		// set delay
-		paramDelay := params.Get("delay")
-		var delay int64
-		if paramDelay != "" {
-			delay, _ = strconv.ParseInt(paramDelay, 10, 64)
-			if delay > 10000 {
-				delay = 10000
-			}
-		}
-
-		// create task context
-		taskCtx, cancel := chromedp.NewContext(globalContext)
-		defer cancel()
-
-		tasks := chromedp.Tasks{}
-
-		// set prefers dark mode
-		if params.Get("dark") == "true" {
-			tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-				emulatedMedia := emulation.SetEmulatedMedia()
-				emulatedMedia.Features = append(emulatedMedia.Features, &emulation.MediaFeature{Name: "prefers-color-scheme", Value: "dark"})
-				err = emulatedMedia.Do(ctx)
-				return err
-			}))
-		}
-
-		// navigate to url and capture screenshot to buf
-		var buf = make([]byte, 0, 200*1024)
-		tasks = append(tasks,
-			// chromedp.Emulate(device.IPad),
-			chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
-			// set prefers dark mode
-			chromedp.Navigate(validatedUrl),
-			// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
-			chromedp.Sleep(time.Duration(delay)*time.Millisecond),
-			chromedp.CaptureScreenshot(&buf))
-
-		if err = chromedp.Run(taskCtx, tasks); err != nil {
+		// if request doesn't meet above conditions, take screenshot
+		if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
+			serveImage(w, r, filepath)
+		} else {
 			handleServerError(w, err)
-			return
 		}
-
-		// save image
-		f, err := os.CreateTemp(global.ImageDir, "*.jpg")
-		if err != nil {
-			log.Fatal(err)
-		}
-		filepath := f.Name()
-
-		// decode the png
-		decodedPng, err := png.Decode(bytes.NewReader(buf))
-		if err != nil {
-			handleServerError(w, err)
-			return
-		}
-		// encode the jpeg
-		buff := new(bytes.Buffer)
-		err = jpeg.Encode(buff, decodedPng, &jpeg.Options{Quality: 90})
-		if err != nil {
-			handleServerError(w, err)
-			return
-		}
-		// write image to file
-		err = os.WriteFile(filepath, buff.Bytes(), 0o644)
-		if err != nil {
-			handleServerError(w, err)
-			return
-		}
-		// add image to database
-		err = database.AddImage(&database.SocialImage{
-			Url:      urlKey,
-			File:     strings.TrimPrefix(filepath, global.ImageDir),
-			CacheKey: pageCacheKey,
-		})
-		if err != nil {
-			log.Println(err)
-			handleServerError(w, err)
-			return
-		}
-
-		serveImage(w, r, filepath)
 	})
 
 	// start cleanup routine
@@ -261,6 +174,104 @@ func main() {
 	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
+	log.Println("Taking screenshot for", validatedUrl)
+	// add og-image-request parameter to url
+	validatedUrl += "?og-image-request=true"
+
+	// set viewport dimensions
+	paramWidth := params.Get("width")
+	var viewportWidth int64
+	var viewportHeight int64
+	if paramWidth != "" {
+		viewportWidth, _ = strconv.ParseInt(paramWidth, 10, 64)
+	}
+	if viewportWidth == 0 {
+		viewportWidth = 1400
+	} else if viewportWidth > 2400 {
+		viewportWidth = 2400
+	} else if viewportWidth < 400 {
+		viewportWidth = 400
+	}
+	// force 1.9:1 aspect ratio
+	viewportHeight = int64(float64(viewportWidth) / 1.9)
+	// calculate scale to make image 2000px wide
+	scale := 2000 / float64(viewportWidth)
+
+	// set delay
+	paramDelay := params.Get("delay")
+	var delay int64
+	if paramDelay != "" {
+		delay, _ = strconv.ParseInt(paramDelay, 10, 64)
+		if delay > 10000 {
+			delay = 10000
+		}
+	}
+
+	// create task context
+	taskCtx, cancel := chromedp.NewContext(globalBrowserContext)
+	defer cancel()
+	tasks := chromedp.Tasks{}
+
+	// set prefers dark mode
+	if params.Get("dark") == "true" {
+		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+			emulatedMedia := emulation.SetEmulatedMedia()
+			emulatedMedia.Features = append(emulatedMedia.Features, &emulation.MediaFeature{Name: "prefers-color-scheme", Value: "dark"})
+			return emulatedMedia.Do(ctx)
+		}))
+	}
+
+	// navigate to url and capture screenshot to buf
+	var buf = make([]byte, 0, 200*1024)
+	tasks = append(tasks,
+		// chromedp.Emulate(device.IPad),
+		chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
+		chromedp.Navigate(validatedUrl),
+		// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
+		chromedp.Sleep(time.Duration(delay)*time.Millisecond),
+		chromedp.CaptureScreenshot(&buf))
+
+	if err = chromedp.Run(taskCtx, tasks); err != nil {
+		return "", err
+	}
+
+	// save image
+	f, err := os.CreateTemp(global.ImageDir, "*.jpg")
+	if err != nil {
+		return "", err
+	}
+	filepath = f.Name()
+
+	// decode the png
+	decodedPng, err := png.Decode(bytes.NewReader(buf))
+	if err != nil {
+		return "", err
+	}
+	// encode the jpeg
+	buff := new(bytes.Buffer)
+	err = jpeg.Encode(buff, decodedPng, &jpeg.Options{Quality: 90})
+	if err != nil {
+		return "", err
+	}
+	// write image to file
+	err = os.WriteFile(filepath, buff.Bytes(), 0o644)
+	if err != nil {
+		return "", err
+	}
+	// add image to database
+	err = database.AddImage(&database.SocialImage{
+		Url:      urlKey,
+		File:     strings.TrimPrefix(filepath, global.ImageDir),
+		CacheKey: pageCacheKey,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return filepath, nil
 }
 
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
@@ -311,35 +322,29 @@ func checkUrlOk(validatedUrl string) (bool, string) {
 	if err != nil {
 		return false, ""
 	}
-
 	// make the request
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, ""
 	}
 	defer resp.Body.Close()
-
 	// Check if the status code is 200 OK
 	if ok := resp.StatusCode == http.StatusOK; !ok {
 		return false, ""
 	}
-
 	// Parse the HTML response
 	doc, err := scraper.Parse(resp.Body)
 	if err != nil {
 		return false, ""
 	}
-
 	// find og:image meta tag and extract the url
 	ogImageURL := scraper.FindOgUrl(doc)
 	if ogImageURL == "" {
 		return true, ""
 	}
-
 	// extract the cache_key parameter from the og:image url
 	cacheKey, _ := scraper.ExtractCacheKey(ogImageURL)
 	return true, cacheKey
-
 }
 
 func handleServerError(w http.ResponseWriter, err error) {

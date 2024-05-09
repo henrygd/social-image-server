@@ -68,7 +68,7 @@ func AddImage(img *SocialImage) error {
 		if err = os.Remove(global.ImageDir + file); err != nil {
 			return err
 		}
-		log.Println("Updated old image for", img.Url)
+		log.Println("Updated existing row for", img.Url)
 		return nil
 	}
 
