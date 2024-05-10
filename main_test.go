@@ -17,6 +17,7 @@ import (
 var mockServer *httptest.Server
 
 var cacheKey = "abcdef123456"
+var ogImageRequestParam string
 
 func TestMain(m *testing.M) {
 	mockServer = createMockServer()
@@ -38,6 +39,9 @@ func TestMain(m *testing.M) {
 func createMockServer() *httptest.Server {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {
+			if r.URL.Query().Has("og-image-request") {
+				ogImageRequestParam = r.URL.Query().Get("og-image-request")
+			}
 			w.WriteHeader(http.StatusOK)
 			w.Header().Set("Content-Type", "text/html")
 			htmlContent := `<html><head><title>valid</title></head><body>valid</body></html>`
@@ -241,6 +245,10 @@ func TestEndpoints(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Sends URL param og-image-request to origin", func(t *testing.T) {
+		assert.Equal(t, "true", ogImageRequestParam)
+	})
 
 	// the first image request should take longest since it needs to open browser
 	t.Run("First image generation is longest", func(t *testing.T) {
