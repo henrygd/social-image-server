@@ -14,4 +14,9 @@ services:
   browser:
     image: 'chromedp/headless-shell:latest'
     container_name: 'chromedp'
-    command: ['--font-render-hinting=none', '--hide-scrollbars']
+    command: ['--system-font-family=Cantarell', '--font-render-hinting=none', '--hide-scrollbars']
+    # mounting fonts in the container is optional but recommended
+    # DejaVu Sans is the only default font provided by the image
+    # use the flag above to specify a different font, not the env var
+    volumes:
+      - /usr/share/fonts:/usr/share/fonts/host:ro

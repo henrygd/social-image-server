@@ -28,7 +28,7 @@ Add an `og:image` meta tag into the `<head>` of your website.
 
 Ideally you want to use this in a layout template that will generate the correct URL for each page.
 
-A useful site for previewing or generating boilerplate is [heymeta.com](https://www.heymeta.com/).
+A useful site for previewing or generating boilerplate HTML is [heymeta.com](https://www.heymeta.com/).
 
 ## URL Parameters
 
@@ -43,37 +43,30 @@ A useful site for previewing or generating boilerplate is [heymeta.com](https://
 
 ## Environment Variables
 
-| Name            | Default | Description                                                                                         |
-| --------------- | ------- | --------------------------------------------------------------------------------------------------- |
-| ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                     |
-| CACHE_TIME      | 30 days | Time to cache images on server.                                                                     |
-| PORT            | 8080    | Port to listen on.                                                                                  |
-| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222 |
-| REGEN_KEY       | -       | Key used to bypass cache for specific URL. Use to tweak delay / width.                              |
-| DATA_DIR        | ./data  | Directory to store program data (images and database).                                              |
-| FONT_FAMILY     | -       | Change browser fallback font. Must be available on your system / image.                             |
-
-## Remote Browser Instance
-
-Default behavior is to launch a new instance of Chrome for every screenshot.
-
-To connect to an existing instance, use the `REMOTE_URL` environment variable.
-
-### Examples
-
-Using the chromedp `headless-shell` docker image (see [docker-compose.yml](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml)):
-
-```sh
-docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
-```
-
-Using Chrome directly (most flags are from [chromedp's default options](https://pkg.go.dev/github.com/chromedp/chromedp@v0.9.5#pkg-variables)):
-
-```sh
-google-chrome-stable --remote-debugging-port=9222 --headless=new --hide-scrollbars --font-render-hinting=none --disable-background-networking --enable-features=NetworkService,NetworkServiceInProcess --disable-extensions --disable-breakpad --disable-backgrounding-occluded-windows --disable-default-apps --disable-background-timer-throttling --disable-features=site-per-process,Translate,BlinkGenPropertyTrees --disable-hang-monitor --disable-client-side-phishing-detection --disable-popup-blocking --disable-prompt-on-repost --disable-sync --disable-translate --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain
-```
+| Name            | Default | Description                                                                                                                           |
+| --------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                                                       |
+| CACHE_TIME      | 30 days | Time to cache images on server.                                                                                                       |
+| DATA_DIR        | ./data  | Directory to store program data (images and database).                                                                                |
+| FONT_FAMILY     | -       | Change browser fallback font. Must be available on your system / image.                                                               |
+| PERSIST_BROWSER | 5m      | Time to keep the browser process running after the last image generation. Valid units are "ms", "s", "m", "h". See FAQ for more info. |
+| PORT            | 8080    | Port to listen on.                                                                                                                    |
+| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222                                   |
+| REGEN_KEY       | -       | Key used to force bypass cache.                                                                                                       |
 
 ## Frequently Asked Questions
+
+### Does the server require Chrome or Chromium running in the background indefinitely?
+
+Only if you use `REMOTE_URL` to connect with a remote browser process.
+
+Otherwise the server will manage headless browser processes as necessary.
+
+If it needs to generate an image and there is no process already running, it will start one. After the image is generated, a timer is started. If another image generation occurs within the timer duration, the browser process is reused, and the timer is reset. If the timer reaches zero, the browser process is terminated.
+
+This way active servers will get the performance benefits of reusing the browser process, while less active servers will not need to keep Chrome running in the background forever.
+
+The timer duration can be configured with the `PERSIST_BROWSER` environment variable.
 
 ### How can I add custom styles or scripts when the screenshot is taken?
 
@@ -81,11 +74,33 @@ The server's outgoing request to websites always includes the URL parameter `og-
 
 ### Why does the image look different than in my browser?
 
-Likely because the website isn't providing fonts over the network and the browser is using a different default font than your personal setup. If you're using a native browser installation, you may be able to force the font using the `FONT_FAMILY` environment variable.
+Probably because the website isn't providing fonts over the network, and the browser is using a different default font than your personal setup.
 
-When using `chromedp/headless-shell`, sans-serif will fall back to DejaVu Sans, because it's the only font in the image. If that's an issue, try a different headless chrome image, or running a native Chrome installation with the `--remote-debugging-port` option.
+If you're not using a remote browser instance, you should be able to change the font using the `FONT_FAMILY` environment variable.
 
-It may be possible to mount local fonts in the `headless-shell` container, but I haven't tested that.
+If you are using a remote browser, try setting the `--system-font-family` flag. Check the [docker-compose](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml) for an example.
+
+## Remote Browser Instance
+
+Use the `REMOTE_URL` environment variable to connect to an existing instance of Chrome.
+
+This is only necessary / recommended if you're using docker or you don't want to install Chromium.
+
+### Examples
+
+Using the chromedp `headless-shell` docker image (see [docker-compose.yml](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml)).
+
+```sh
+docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
+```
+
+Using Chrome directly (most flags are from [chromedp's default options](https://pkg.go.dev/github.com/chromedp/chromedp@v0.9.5#pkg-variables)).
+
+If using docker, you'll need to give your container access to your host's ports.
+
+```sh
+google-chrome-stable --remote-debugging-port=9222 --headless=new --hide-scrollbars --font-render-hinting=none --disable-background-networking --enable-features=NetworkService,NetworkServiceInProcess --disable-extensions --disable-breakpad --disable-backgrounding-occluded-windows --disable-default-apps --disable-background-timer-throttling --disable-features=site-per-process,Translate,BlinkGenPropertyTrees --disable-hang-monitor --disable-client-side-phishing-detection --disable-popup-blocking --disable-prompt-on-repost --disable-sync --disable-translate --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain
+```
 
 ## Response headers
 
