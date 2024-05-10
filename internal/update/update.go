@@ -7,16 +7,14 @@ import (
 	"strings"
 
 	"github.com/blang/semver"
-	"github.com/henrygd/social-image-server/internal/global"
 	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
-func Run() {
-	var VERSION = global.VERSION
+func Run(curVersion string) {
 	var latest *selfupdate.Release
 	var found bool
 	var err error
-	currentVersion := semver.MustParse(VERSION)
+	currentVersion := semver.MustParse(curVersion)
 	slog.Info("Social Image Server", "v", currentVersion)
 	slog.Info("Checking for updates...")
 	latest, found, err = selfupdate.DetectLatest("henrygd/social-image-server")
@@ -38,7 +36,7 @@ func Run() {
 	}
 
 	var binaryPath string
-	log.Printf("Updating from %s to %s...", VERSION, latest.Version)
+	log.Printf("Updating from %s to %s...", currentVersion, latest.Version)
 	binaryPath, err = os.Executable()
 	if err != nil {
 		slog.Error("Error getting binary path", "error", err)
@@ -49,5 +47,5 @@ func Run() {
 		slog.Error("Please try rerunning with sudo", "err", err)
 		os.Exit(1)
 	}
-	log.Printf("Successfully updated: %s -> %s\n\n%s", VERSION, latest.Version, strings.TrimSpace(latest.ReleaseNotes))
+	log.Printf("Successfully updated: %s -> %s\n\n%s", currentVersion, latest.Version, strings.TrimSpace(latest.ReleaseNotes))
 }

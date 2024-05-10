@@ -13,7 +13,7 @@ You can download and run the latest binary from the [releases page](https://gith
 Use the `--update` flag to update to the latest version (0.0.4 or later).
 
 ```bash
-curl -sL "https://github.com/henrygd/social-image-server/releases/latest/download/social-image-server_$(uname -s)_$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/').tar.gz" | tar -xz -O social-image-server && chmod +x social-image-server && ls social-image-server
+curl -sL "https://github.com/henrygd/social-image-server/releases/latest/download/social-image-server_$(uname -s)_$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/').tar.gz" | tar -xz -O social-image-server | tee ./social-image-server >/dev/null && chmod +x social-image-server && ls social-image-server
 ```
 
 ### Docker

@@ -27,6 +27,8 @@ import (
 	"github.com/henrygd/social-image-server/internal/update"
 )
 
+var version = "0.0.4"
+
 var allowedDomains string
 var allowedDomainsMap = make(map[string]bool)
 
@@ -37,12 +39,12 @@ func main() {
 	flag.Parse()
 
 	if *flagVersion {
-		fmt.Println(global.VERSION)
+		fmt.Println(version)
 		os.Exit(0)
 	}
 
 	if *flagUpdate {
-		update.Run()
+		update.Run(version)
 		os.Exit(0)
 	}
 
@@ -57,7 +59,7 @@ func main() {
 		}
 	}
 
-	slog.Info("Social Image Server", "v", global.VERSION)
+	slog.Info("Social Image Server", "v", version)
 	slog.Debug("ALLOWED_DOMAINS", "value", allowedDomains)
 
 	router := setUpRouter()

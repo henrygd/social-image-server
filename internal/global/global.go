@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 )
 
-var VERSION = "0.0.4"
-
 var DataDir string
 var DatabaseDir string
 var ImageDir string
