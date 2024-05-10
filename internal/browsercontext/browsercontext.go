@@ -26,7 +26,7 @@ var browserContextMutex = &sync.Mutex{}
 
 var timer *time.Timer
 
-func init() {
+func Init() {
 	persistBrowser := os.Getenv("PERSIST_BROWSER")
 	if persistBrowser == "" {
 		persistBrowser = "5m"

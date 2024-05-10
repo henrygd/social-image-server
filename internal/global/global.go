@@ -3,19 +3,20 @@ package global
 import (
 	"log"
 	"os"
+	"path/filepath"
 )
 
-var DataDir = setUpDataDirectories()
+var DataDir string
 var DatabaseDir string
 var ImageDir string
 
-func setUpDataDirectories() string {
+func Init() string {
 	dataDir := os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "./data"
 	}
-	DatabaseDir = dataDir + "/db"
-	ImageDir = dataDir + "/images"
+	DatabaseDir = filepath.Join(dataDir, "db")
+	ImageDir = filepath.Join(dataDir, "images")
 
 	// create folders
 	if err := os.MkdirAll(DatabaseDir, 0755); err != nil {

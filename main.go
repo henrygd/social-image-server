@@ -23,10 +23,31 @@ import (
 	"github.com/henrygd/social-image-server/internal/scraper"
 )
 
-var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
+var allowedDomains string
 var allowedDomainsMap = make(map[string]bool)
 
 func main() {
+	router := setUpRouter()
+
+	// start cleanup routine
+	go cleanup()
+
+	// start server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Println("Starting server on port", port)
+	if err := http.ListenAndServe(":"+port, router); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func setUpRouter() *http.ServeMux {
+	global.Init()
+	database.Init()
+
+	allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 	// create map of allowed allowedDomains for quick lookup
 	for _, domain := range strings.Split(allowedDomains, ",") {
 		domain = strings.TrimSpace(domain)
@@ -123,18 +144,7 @@ func main() {
 		}
 	})
 
-	// start cleanup routine
-	go cleanup()
-
-	// start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	log.Println("Starting server on port", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatal(err)
-	}
+	return router
 }
 
 func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
@@ -266,9 +276,11 @@ func cleanup() {
 }
 
 func serveImage(w http.ResponseWriter, r *http.Request, filename, status, code string) {
-	// w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("X-Og-Cache", status)
 	w.Header().Set("X-Og-Code", code)
+	w.Header().Set("Content-Type", "image/jpeg")
+	// w.Header().Set("Content-Length", strconv.Itoa(len(filename)))
+	// w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, filename)
 }
 

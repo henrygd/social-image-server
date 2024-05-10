@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/henrygd/social-image-server/internal/global"
@@ -21,7 +22,7 @@ type SocialImage struct {
 	CacheKey string
 }
 
-func init() {
+func Init() {
 	log.Println("Initializing database")
 
 	// set default clean interval
@@ -30,7 +31,7 @@ func init() {
 	}
 
 	var err error
-	db, err = sql.Open("sqlite", global.DatabaseDir+"/social-image-server.db")
+	db, err = sql.Open("sqlite", filepath.Join(global.DatabaseDir, "social-image-server.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -119,7 +120,7 @@ func Clean() error {
 	}
 	// delete files
 	for _, file := range files {
-		if err = os.Remove(global.ImageDir + file); err != nil {
+		if err = os.Remove(filepath.Join(global.ImageDir, file)); err != nil {
 			return err
 		}
 	}
