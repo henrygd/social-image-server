@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,17 +14,50 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var mockServer *httptest.Server
+
+var cacheKey = "abcdef123456"
+
 func TestMain(m *testing.M) {
+	mockServer = createMockServer()
+	defer mockServer.Close()
+	log.Println("Starting mock server on", mockServer.URL)
+	serverUrl, _ := url.Parse(mockServer.URL)
 	dataDir := filepath.Join(os.TempDir(), "social-image-server-test")
+	os.Setenv("ALLOWED_DOMAINS", serverUrl.Host)
 	os.Setenv("DATA_DIR", dataDir)
 	os.Setenv("REGEN_KEY", "jamesconnolly")
-	os.Setenv("ALLOWED_DOMAINS", "henrygd.me,democrats.org")
 	// Run the tests
 	code := m.Run()
 	// Clean up after tests
 	os.RemoveAll(dataDir)
 	// Exit with the test code
 	os.Exit(code)
+}
+
+func createMockServer() *httptest.Server {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "text/html")
+			htmlContent := `<html><head><title>valid</title></head><body>valid</body></html>`
+			w.Write([]byte(htmlContent))
+			return
+		}
+		if r.URL.Path == "/cachekey" {
+			ogImageUrl := fmt.Sprintf("https://test.com/get?url=%s/cachekey&cache_key=%s", r.Host, cacheKey)
+			htmlContent := `
+			<html><head><title>valid site</title>
+			<meta property="og:image" content="` + ogImageUrl + `" />
+			</head><body>valid site</body></html>`
+			w.WriteHeader(http.StatusOK)
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(htmlContent))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	return server
 }
 
 func TestEndpoints(t *testing.T) {
@@ -36,6 +72,7 @@ func TestEndpoints(t *testing.T) {
 		expectedImage   bool
 		expectedOgCache string
 		expectedOgCode  string
+		newCacheKey     string
 	}{
 		{
 			name:            "No URL",
@@ -57,7 +94,7 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "404 URL",
-			url:             "/get?url=democrats.org/ceasefire",
+			url:             fmt.Sprintf("/get?url=%s/invalid", mockServer.URL),
 			expectedCode:    http.StatusNotFound,
 			expectedBody:    "Requested URL not found\n",
 			expectedImage:   false,
@@ -74,17 +111,8 @@ func TestEndpoints(t *testing.T) {
 			expectedOgCode:  "",
 		},
 		{
-			name:            "Request key doesn't match (no cache)",
-			url:             "/get?url=henrygd.me&cache_key=12345",
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "request cache_key does not match origin cache_key\n",
-			expectedImage:   false,
-			expectedOgCache: "",
-			expectedOgCode:  "",
-		},
-		{
 			name:            "Valid URL",
-			url:             "/get?url=henrygd.me",
+			url:             fmt.Sprintf("/get?url=%s", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedBody:    "",
 			expectedImage:   true,
@@ -93,7 +121,7 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "Cached Image",
-			url:             "/get?url=henrygd.me&width=1200",
+			url:             fmt.Sprintf("/get?url=%s&width=1200", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedBody:    "",
 			expectedImage:   true,
@@ -101,8 +129,54 @@ func TestEndpoints(t *testing.T) {
 			expectedOgCode:  "2",
 		},
 		{
-			name:            "Request key doesn't match (has cache)",
-			url:             "/get?url=henrygd.me&cache_key=12345",
+			name:            "Cache key BAD (no cache)",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=12345", mockServer.URL),
+			expectedCode:    http.StatusBadRequest,
+			expectedBody:    "request cache_key does not match origin cache_key\n",
+			expectedImage:   false,
+			expectedOgCache: "",
+			expectedOgCode:  "",
+		},
+		{
+			name:            "Cache key GOOD (no cache)",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedBody:    "",
+			expectedImage:   true,
+			expectedOgCache: "MISS",
+			expectedOgCode:  "0",
+		},
+		{
+			name:            "Cache key GOOD (cached)",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedBody:    "",
+			expectedImage:   true,
+			expectedOgCache: "HIT",
+			expectedOgCode:  "2",
+		},
+		{
+			name:            "Cache key BAD (has cache)",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=12345", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedBody:    "",
+			expectedImage:   true,
+			expectedOgCache: "HIT",
+			expectedOgCode:  "3",
+		},
+		{
+			name:            "Cache key CHANGE",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=987654321", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedBody:    "",
+			expectedImage:   true,
+			expectedOgCache: "MISS",
+			expectedOgCode:  "0",
+			newCacheKey:     "987654321",
+		},
+		{
+			name:            "Cache key OLD (has cache)",
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedBody:    "",
 			expectedImage:   true,
@@ -111,7 +185,7 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "Regen Param (bad value)",
-			url:             "/get?url=henrygd.me&_regen_=12345",
+			url:             fmt.Sprintf("/get?url=%s&_regen_=12345", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedBody:    "",
 			expectedImage:   true,
@@ -120,7 +194,7 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "Regen Param (good value)",
-			url:             "/get?url=henrygd.me&_regen_=jamesconnolly",
+			url:             fmt.Sprintf("/get?url=%s&_regen_=jamesconnolly", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedBody:    "",
 			expectedImage:   true,
@@ -129,21 +203,34 @@ func TestEndpoints(t *testing.T) {
 		},
 	}
 
+	var imageProcessingTimes []int64
+
 	for _, tc := range testCases {
-		time.Sleep(time.Millisecond * 100)
+		if tc.newCacheKey != "" {
+			cacheKey = tc.newCacheKey
+		}
+
 		t.Run(tc.name, func(t *testing.T) {
-			// Given
+			var start time.Time
+
 			req, err := http.NewRequest("GET", tc.url, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			// When
+			if tc.expectedImage {
+				start = time.Now()
+			}
+
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
 
-			// Then
 			assert.Equal(t, tc.expectedCode, rr.Code)
+
+			if tc.expectedImage {
+				duration := time.Since(start).Milliseconds()
+				imageProcessingTimes = append(imageProcessingTimes, duration)
+			}
 
 			if tc.expectedImage {
 				assert.Equal(t, "image/jpeg", rr.Header().Get("Content-Type"))
@@ -155,5 +242,16 @@ func TestEndpoints(t *testing.T) {
 		})
 	}
 
-	// todo: more cache key tests, persistence tests, same url mutex test, CACHE_TIME test
+	// the first image request should take longest since it needs to open browser
+	t.Run("First image generation is longest", func(t *testing.T) {
+		var longestTime int64 = 0
+		for _, time := range imageProcessingTimes {
+			if time > longestTime {
+				longestTime = time
+			}
+		}
+		assert.Equal(t, imageProcessingTimes[0], longestTime)
+	})
+
+	// todo: same url mutex test, CACHE_TIME test
 }
