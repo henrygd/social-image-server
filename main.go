@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"image/jpeg"
 	"image/png"
 	"log"
@@ -22,14 +24,28 @@ import (
 	"github.com/henrygd/social-image-server/internal/database"
 	"github.com/henrygd/social-image-server/internal/global"
 	"github.com/henrygd/social-image-server/internal/scraper"
+	"github.com/henrygd/social-image-server/internal/update"
 )
-
-var version = "0.0.4"
 
 var allowedDomains string
 var allowedDomainsMap = make(map[string]bool)
 
 func main() {
+	// handle flags
+	flagVersion := flag.Bool("v", false, "Print version")
+	flagUpdate := flag.Bool("update", false, "Update to latest version")
+	flag.Parse()
+
+	if *flagVersion {
+		fmt.Println(global.VERSION)
+		os.Exit(0)
+	}
+
+	if *flagUpdate {
+		update.Run()
+		os.Exit(0)
+	}
+
 	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
 		switch logLevel {
 		case "debug":
@@ -41,7 +57,7 @@ func main() {
 		}
 	}
 
-	slog.Info("Social Image Server", "version", version)
+	slog.Info("Social Image Server", "v", global.VERSION)
 	slog.Debug("ALLOWED_DOMAINS", "value", allowedDomains)
 
 	router := setUpRouter()
@@ -127,7 +143,7 @@ func setUpRouter() *http.ServeMux {
 			// if no cache_key in request and found cached image, return cached image
 			// if cache_key param matches db cache key, return cached image
 			if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
-				slog.Info("Returning cached image", "url", validatedUrl, "cache_key", paramCacheKey)
+				slog.Debug("Found cached image", "url", validatedUrl, "cache_key", paramCacheKey)
 				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "2")
 				return
 			}
