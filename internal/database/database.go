@@ -134,14 +134,14 @@ func Clean() error {
 //
 // move to init function on major release
 func runDatabaseUpdates() {
-	_, err := db.Exec(`ALTER TABLE images ADD COLUMN cache_key TEXT NOT NULL`)
+	_, err := db.Exec(`ALTER TABLE images ADD COLUMN cache_key TEXT NOT NULL DEFAULT '';`)
 	if err != nil {
 		if !strings.Contains(err.Error(), "duplicate column") {
 			log.Fatal("Error adding cache_key column:", err)
 		}
 	}
 	// add index to url column
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS url_index ON images (url)`)
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS url_index ON images (url);`)
 	if err != nil {
 		log.Fatal("Error creating index:", err)
 	}
