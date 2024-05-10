@@ -21,7 +21,7 @@ type SocialImage struct {
 	CacheKey string
 }
 
-func Init() error {
+func init() {
 	log.Println("Initializing database")
 
 	// set default clean interval
@@ -32,7 +32,7 @@ func Init() error {
 	var err error
 	db, err = sql.Open("sqlite", global.DatabaseDir+"/social-image-server.db")
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	_, err = db.Exec(
 		`CREATE TABLE IF NOT EXISTS images (
@@ -42,10 +42,10 @@ func Init() error {
 		)`,
 	)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 	runDatabaseUpdates()
-	return nil
+	Clean()
 }
 
 func AddImage(img *SocialImage) error {
@@ -68,7 +68,7 @@ func AddImage(img *SocialImage) error {
 		if err = os.Remove(global.ImageDir + file); err != nil {
 			return err
 		}
-		log.Println("Updated existing row for", img.Url)
+		// log.Println("Updated existing row for", img.Url)
 		return nil
 	}
 
@@ -76,7 +76,7 @@ func AddImage(img *SocialImage) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("New row inserted for URL:", img.Url)
+	// fmt.Println("New row inserted for URL:", img.Url)
 
 	return nil
 }
@@ -123,7 +123,12 @@ func Clean() error {
 			return err
 		}
 	}
-	log.Println("Cleaned", len(files), "expired images")
+	count := len(files)
+	word := "images"
+	if count == 1 {
+		word = "image"
+	}
+	log.Println("Cleaned", count, word)
 	return nil
 }
 

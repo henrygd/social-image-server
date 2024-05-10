@@ -16,39 +16,17 @@ import (
 
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
+	"github.com/henrygd/social-image-server/internal/browsercontext"
 	"github.com/henrygd/social-image-server/internal/concurrency"
 	"github.com/henrygd/social-image-server/internal/database"
 	"github.com/henrygd/social-image-server/internal/global"
 	"github.com/henrygd/social-image-server/internal/scraper"
 )
 
-var remoteUrl = os.Getenv("REMOTE_URL")
 var allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 var allowedDomainsMap = make(map[string]bool)
 
-// allocator context for use with creating a browser context later
-var globalBrowserContext context.Context
-
 func main() {
-	if global.DataDir == "" {
-		global.DataDir = "./data"
-	}
-	global.ImageDir = global.DataDir + "/images"
-	global.DatabaseDir = global.DataDir + "/db"
-	// create folders
-	if err := os.MkdirAll(global.ImageDir, 0755); err != nil {
-		log.Fatal(err)
-	}
-	if err := os.MkdirAll(global.DatabaseDir, 0755); err != nil {
-		log.Fatal(err)
-	}
-
-	// create database
-	if err := database.Init(); err != nil {
-		log.Fatal(err)
-		return
-	}
-
 	// create map of allowed allowedDomains for quick lookup
 	for _, domain := range strings.Split(allowedDomains, ",") {
 		domain = strings.TrimSpace(domain)
@@ -56,23 +34,6 @@ func main() {
 			allowedDomainsMap[domain] = true
 		}
 	}
-
-	var cancel context.CancelFunc
-	if remoteUrl != "" {
-		globalBrowserContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
-	} else {
-		opts := append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("font-render-hinting", "none"),
-			chromedp.Flag("disable-font-subpixel-positioning", true),
-		)
-		font := os.Getenv("FONT_FAMILY")
-		if font != "" {
-			opts = append(opts, chromedp.Flag("system-font-family", font))
-		}
-		// var blankOpts []func(*chromedp.ExecAllocator)
-		globalBrowserContext, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
-	}
-	defer cancel()
 
 	router := http.NewServeMux()
 
@@ -131,7 +92,7 @@ func main() {
 			}
 		}
 
-		// should only get here if
+		// should get here only if
 		// 1. image is not cached
 		// 2. cache_key param is provided and doesn't match db cache key
 
@@ -177,7 +138,7 @@ func main() {
 }
 
 func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
-	log.Println("Taking screenshot for", validatedUrl)
+	// log.Println("Taking screenshot for", validatedUrl)
 	// add og-image-request parameter to url
 	validatedUrl += "?og-image-request=true"
 
@@ -210,9 +171,22 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 		}
 	}
 
-	// create task context
-	taskCtx, cancel := chromedp.NewContext(globalBrowserContext)
+	var taskCtx context.Context
+	var cancel context.CancelFunc
+	if browsercontext.IsRemoteBrowser {
+		// if using remote browser, use remote context
+		taskCtx, cancel = browsercontext.GetRemoteContext()
+	} else {
+		var resetBrowserTimer func()
+		taskCtx, cancel, resetBrowserTimer = browsercontext.GetTaskContext()
+		defer resetBrowserTimer()
+	}
+
 	defer cancel()
+	// get task context and timer to close browser
+	// taskCtx, cancel, resetBrowserTimer := browsercontext.GetTaskContext()
+	// defer resetBrowserTimer()
+	// defer cancel()
 	tasks := chromedp.Tasks{}
 
 	// set prefers dark mode
@@ -275,13 +249,19 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 }
 
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
+
 func cleanup() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	//lint:ignore S1000 This loop is intentionally infinite and waits on ticker
 	for {
-		if err := database.Clean(); err != nil {
-			log.Println(err)
+		select {
+		case <-ticker.C:
+			if err := database.Clean(); err != nil {
+				log.Println(err)
+			}
+			concurrency.CleanUrlMutexes(time.Now())
 		}
-		time.Sleep(time.Hour)
-		concurrency.CleanUrlMutexes(time.Now())
 	}
 }
 
