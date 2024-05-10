@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,10 +24,26 @@ import (
 	"github.com/henrygd/social-image-server/internal/scraper"
 )
 
+var version = "0.0.4"
+
 var allowedDomains string
 var allowedDomainsMap = make(map[string]bool)
 
 func main() {
+	if logLevel := os.Getenv("LOG_LEVEL"); logLevel != "" {
+		switch logLevel {
+		case "debug":
+			slog.SetLogLoggerLevel(slog.LevelDebug)
+		case "warn":
+			slog.SetLogLoggerLevel(slog.LevelWarn)
+		case "error":
+			slog.SetLogLoggerLevel(slog.LevelError)
+		}
+	}
+
+	slog.Info("Social Image Server", "version", version)
+	slog.Debug("ALLOWED_DOMAINS", "value", allowedDomains)
+
 	router := setUpRouter()
 
 	// start cleanup routine
@@ -37,7 +54,7 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	log.Println("Starting server on port", port)
+	slog.Info("Starting server", "port", port)
 	if err := http.ListenAndServe(":"+port, router); err != nil {
 		log.Fatal(err)
 	}
@@ -46,6 +63,7 @@ func main() {
 func setUpRouter() *http.ServeMux {
 	global.Init()
 	database.Init()
+	browsercontext.Init()
 
 	allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 	// create map of allowed allowedDomains for quick lookup
@@ -86,6 +104,7 @@ func setUpRouter() *http.ServeMux {
 
 		// if _regen_ param is set, regenerate screenshot and return
 		if regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY")); regen {
+			slog.Debug("Regen key validated", "url", validatedUrl)
 			ok, pageCacheKey := checkUrlOk(validatedUrl)
 			if !ok {
 				http.Error(w, "Requested URL not found", http.StatusNotFound)
@@ -108,6 +127,7 @@ func setUpRouter() *http.ServeMux {
 			// if no cache_key in request and found cached image, return cached image
 			// if cache_key param matches db cache key, return cached image
 			if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
+				slog.Info("Returning cached image", "url", validatedUrl, "cache_key", paramCacheKey)
 				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "2")
 				return
 			}
@@ -126,6 +146,7 @@ func setUpRouter() *http.ServeMux {
 
 		// if request has cache_key but pageCacheKey doesn't match
 		if paramCacheKey != "" && pageCacheKey != paramCacheKey {
+			slog.Info("Cache key does not match", "url", validatedUrl, "request", paramCacheKey, "origin", pageCacheKey)
 			// return cached image if it exists
 			if cachedImage.File != "" {
 				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "3")
@@ -148,7 +169,7 @@ func setUpRouter() *http.ServeMux {
 }
 
 func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
-	// log.Println("Taking screenshot for", validatedUrl)
+	slog.Debug("Taking screenshot", "url", validatedUrl)
 	// add og-image-request parameter to url
 	validatedUrl += "?og-image-request=true"
 
@@ -268,7 +289,7 @@ func cleanup() {
 		select {
 		case <-ticker.C:
 			if err := database.Clean(); err != nil {
-				log.Println(err)
+				slog.Error("Error cleaning database", "error", err)
 			}
 			concurrency.CleanUrlMutexes(time.Now())
 		}
@@ -342,6 +363,6 @@ func checkUrlOk(validatedUrl string) (bool, string) {
 }
 
 func handleServerError(w http.ResponseWriter, err error) {
-	log.Println(err)
+	slog.Error("Error serving image", "error", err)
 	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 }

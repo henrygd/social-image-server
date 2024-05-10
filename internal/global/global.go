@@ -2,6 +2,7 @@ package global
 
 import (
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 )
@@ -15,6 +16,7 @@ func Init() string {
 	if dataDir == "" {
 		dataDir = "./data"
 	}
+	slog.Debug("DATA_DIR", "value", dataDir)
 	DatabaseDir = filepath.Join(dataDir, "db")
 	ImageDir = filepath.Join(dataDir, "images")
 

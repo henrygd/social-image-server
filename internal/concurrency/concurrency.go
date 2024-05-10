@@ -1,6 +1,7 @@
 package concurrency
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -40,9 +41,11 @@ func CleanUrlMutexes(now time.Time) {
 	UrlMutexesLock.Lock()
 	defer UrlMutexesLock.Unlock()
 
+	slog.Debug("Cleaning UrlMutexes", "count", len(UrlMutexes))
 	for url, mutex := range UrlMutexes {
 		if now.Sub(mutex.lastAccess) > time.Minute {
 			delete(UrlMutexes, url)
 		}
 	}
+	slog.Debug("Cleaned UrlMutexes", "count", len(UrlMutexes))
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,12 +24,12 @@ type SocialImage struct {
 }
 
 func Init() {
-	log.Println("Initializing database")
-
 	// set default clean interval
 	if cleanInterval == "" {
 		cleanInterval = "30 days"
 	}
+
+	slog.Debug("Initializing database", "CACHE_TIME", cleanInterval)
 
 	var err error
 	db, err = sql.Open("sqlite", filepath.Join(global.DatabaseDir, "social-image-server.db"))
@@ -50,6 +51,7 @@ func Init() {
 }
 
 func AddImage(img *SocialImage) error {
+	slog.Debug("Adding image to database", "url", img.Url)
 	// check if row with the same URL exists
 	var file string
 	row := db.QueryRow(
@@ -69,7 +71,7 @@ func AddImage(img *SocialImage) error {
 		if err = os.Remove(global.ImageDir + file); err != nil {
 			return err
 		}
-		// log.Println("Updated existing row for", img.Url)
+		slog.Debug("Updated existing row", "url", img.Url)
 		return nil
 	}
 
@@ -77,8 +79,7 @@ func AddImage(img *SocialImage) error {
 	if err != nil {
 		return err
 	}
-	// fmt.Println("New row inserted for URL:", img.Url)
-
+	slog.Debug("New row inserted", "url", img.Url)
 	return nil
 }
 
@@ -89,13 +90,14 @@ func GetImage(url string) (SocialImage, error) {
 
 	err := row.Scan(&image.Url, &image.File, &image.Date, &image.CacheKey)
 	if err != nil && err != sql.ErrNoRows {
-		log.Println(err)
+		slog.Error(err.Error())
 	}
 
 	return image, err
 }
 
 func Clean() error {
+	slog.Debug("Cleaning expired database data")
 	// grab rows so we can delete the files
 	rows, err := db.Query(fmt.Sprintf(`SELECT file FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval))
 	if err != nil {
@@ -124,12 +126,7 @@ func Clean() error {
 			return err
 		}
 	}
-	count := len(files)
-	word := "images"
-	if count == 1 {
-		word = "image"
-	}
-	log.Println("Cleaned", count, word)
+	slog.Debug("Cleaned expired rows / images", "count", len(files))
 	return nil
 }
 

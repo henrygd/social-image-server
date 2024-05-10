@@ -12,9 +12,9 @@ You can download and run the latest binary from the [releases page](https://gith
 
 ### Docker
 
-See the example [docker-compose.yml](/docker-compose.yml). The `chromedp/headless-shell` is needed to provide a browser instance. Other headless Chrome images should work but seem to be much larger.
+See the example [docker-compose](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml). The `chromedp/headless-shell` is needed to provide a browser instance. Other headless Chrome images should work but seem to be much larger.
 
-It may be possible to use a native Chrome installation by giving the container access to your host ports and running Chrome with the `--remote-debugging-port` flag.
+It may be possible to use a native Chrome / Chromium installation by giving the container access to your host ports and running the browser with the `--remote-debugging-port` flag.
 
 ## Usage
 
@@ -43,16 +43,17 @@ A useful site for previewing or generating boilerplate HTML is [heymeta.com](htt
 
 ## Environment Variables
 
-| Name            | Default | Description                                                                                                                           |
-| --------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                                                       |
-| CACHE_TIME      | 30 days | Time to cache images on server.                                                                                                       |
-| DATA_DIR        | ./data  | Directory to store program data (images and database).                                                                                |
-| FONT_FAMILY     | -       | Change browser fallback font. Must be available on your system / image.                                                               |
-| PERSIST_BROWSER | 5m      | Time to keep the browser process running after the last image generation. Valid units are "ms", "s", "m", "h". See FAQ for more info. |
-| PORT            | 8080    | Port to listen on.                                                                                                                    |
-| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222                                   |
-| REGEN_KEY       | -       | Key used to force bypass cache.                                                                                                       |
+| Name            | Default | Description                                                                                                                        |
+| --------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| ALLOWED_DOMAINS | -       | Restrict to certain domains. Example: "example.com,example.org"                                                                    |
+| CACHE_TIME      | 30 days | Time to cache images on server.                                                                                                    |
+| DATA_DIR        | ./data  | Directory to store program data (images and database).                                                                             |
+| FONT_FAMILY     | -       | Change browser fallback font. Must be available on your system / image.                                                            |
+| LOG_LEVEL       | info    | Logging level. Valid values: "debug", "info", "warn", "error".                                                                     |
+| PERSIST_BROWSER | 5m      | Time to keep the browser process running after the last image generation. Valid units: "ms", "s", "m", "h". See FAQ for more info. |
+| PORT            | 8080    | Port to listen on.                                                                                                                 |
+| REMOTE_URL      | -       | Connect to an existing Chrome DevTools instance using a WebSocket URL. Example: ws://localhost:9222                                |
+| REGEN_KEY       | -       | Key used to force bypass cache.                                                                                                    |
 
 ## Frequently Asked Questions
 
@@ -104,7 +105,7 @@ google-chrome-stable --remote-debugging-port=9222 --headless=new --hide-scrollba
 
 ## Response headers
 
-The server includes status headers for successful image requests. These are useful for debugging.
+The server includes status headers for successful image requests.
 
 ### X-Og-Cache
 
