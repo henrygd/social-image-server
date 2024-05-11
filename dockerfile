@@ -20,4 +20,4 @@ COPY --from=builder /social-image-server /
 
 EXPOSE 8080
 
-CMD ["/social-image-server"]
+ENTRYPOINT ["/social-image-server"]
