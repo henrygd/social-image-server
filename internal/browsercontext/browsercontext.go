@@ -5,7 +5,9 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -38,6 +40,20 @@ func Init() {
 		log.Fatal(err)
 	}
 	persistBrowserDuration = duration
+
+	// set up allocator
+	cancelAllocator := setUpAllocator()
+
+	// use channel to listen for SIGTERM and SIGINT signals
+	// to gracefully shut down the allocator context
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		log.Println("Received signal:", sig)
+		cancelAllocator()
+		os.Exit(0)
+	}()
 }
 
 func resetBrowserTimer() {
@@ -56,7 +72,7 @@ func GetTaskContext() (context.Context, context.CancelFunc, func()) {
 
 // remote uses a straightforward context
 func GetRemoteContext() (context.Context, context.CancelFunc) {
-	return chromedp.NewContext(getAllocatorContext())
+	return chromedp.NewContext(allocatorContext)
 }
 
 // closes the browser / cancels the browser context
@@ -76,7 +92,7 @@ func getBrowserContext() context.Context {
 		return browserContext
 	}
 	slog.Debug("Launching browser process")
-	browserContext, cancelBrowserContext = chromedp.NewContext(getAllocatorContext())
+	browserContext, cancelBrowserContext = chromedp.NewContext(allocatorContext)
 
 	if err := chromedp.Run(browserContext); err != nil {
 		log.Fatalf("Error creating browser context: %v", err)
@@ -85,20 +101,16 @@ func getBrowserContext() context.Context {
 	return browserContext
 }
 
-func getAllocatorContext() context.Context {
-	if allocatorContext != nil {
-		return allocatorContext
-	}
-
+func setUpAllocator() (cancel context.CancelFunc) {
 	// if remote url
 	if IsRemoteBrowser {
-		slog.Debug("Creating NewRemoteAllocator", "url", remoteUrl)
-		allocatorContext, _ = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
-		return allocatorContext
+		slog.Debug("Creating RemoteAllocator", "url", remoteUrl)
+		allocatorContext, cancel = chromedp.NewRemoteAllocator(context.Background(), remoteUrl)
+		return cancel
 	}
 
 	// if not remote url
-	slog.Debug("Creating NewExecAllocator")
+	slog.Debug("Creating ExecAllocator")
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("font-render-hinting", "none"),
 		chromedp.Flag("disable-font-subpixel-positioning", true),
@@ -108,15 +120,11 @@ func getAllocatorContext() context.Context {
 		slog.Debug("Using custom font", "FONT_FAMILY", font)
 		opts = append(opts, chromedp.Flag("system-font-family", font))
 	}
-	allocatorContext, _ = chromedp.NewExecAllocator(context.Background(), opts...)
+	allocatorContext, cancel = chromedp.NewExecAllocator(context.Background(), opts...)
 
 	// for testing only
 	// var blankOpts []func(*chromedp.ExecAllocator)
-	// allocatorContext, _ = chromedp.NewExecAllocator(context.Background(), blankOpts...)
+	// allocatorContext, cancel = chromedp.NewExecAllocator(context.Background(), blankOpts...)
 
-	// this is necessary to reuse one instance of the browser
-	var allocatorChildContext context.Context
-	allocatorChildContext, _ = chromedp.NewContext(getAllocatorContext())
-
-	return allocatorChildContext
+	return cancel
 }
