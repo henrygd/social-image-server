@@ -46,9 +46,6 @@ func resetBrowserTimer() {
 }
 
 func GetTaskContext() (context.Context, context.CancelFunc, func()) {
-	if IsRemoteBrowser {
-		return getAllocatorContext(), cancelBrowserContext, resetBrowserTimer
-	}
 	if timer == nil {
 		timer = time.AfterFunc(persistBrowserDuration, closeBrowser)
 	}

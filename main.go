@@ -230,12 +230,8 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 		taskCtx, cancel, resetBrowserTimer = browsercontext.GetTaskContext()
 		defer resetBrowserTimer()
 	}
-
 	defer cancel()
-	// get task context and timer to close browser
-	// taskCtx, cancel, resetBrowserTimer := browsercontext.GetTaskContext()
-	// defer resetBrowserTimer()
-	// defer cancel()
+
 	tasks := chromedp.Tasks{}
 
 	// set prefers dark mode
