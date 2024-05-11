@@ -27,7 +27,7 @@ import (
 	"github.com/henrygd/social-image-server/internal/update"
 )
 
-var version = "0.0.4"
+var version = "0.0.5"
 
 var allowedDomains string
 var allowedDomainsMap = make(map[string]bool)
