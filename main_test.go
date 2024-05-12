@@ -77,48 +77,41 @@ func TestEndpoints(t *testing.T) {
 		expectedOgCache string
 		expectedOgCode  string
 		newCacheKey     string
+		maxReqTime      time.Duration
+		minReqTime      time.Duration
 	}{
 		{
-			name:            "No URL",
-			url:             "/get",
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "no url supplied\n",
-			expectedImage:   false,
-			expectedOgCache: "",
-			expectedOgCode:  "",
+			name:          "No URL",
+			url:           "/get",
+			expectedCode:  http.StatusBadRequest,
+			expectedBody:  "no url supplied\n",
+			expectedImage: false,
 		},
 		{
-			name:            "Invalid URL",
-			url:             "/get?url=lkj laskd",
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "invalid url\n",
-			expectedImage:   false,
-			expectedOgCache: "",
-			expectedOgCode:  "",
+			name:          "Invalid URL",
+			url:           "/get?url=lkj laskd",
+			expectedCode:  http.StatusBadRequest,
+			expectedBody:  "invalid url\n",
+			expectedImage: false,
 		},
 		{
-			name:            "404 URL",
-			url:             fmt.Sprintf("/get?url=%s/invalid", mockServer.URL),
-			expectedCode:    http.StatusNotFound,
-			expectedBody:    "Requested URL not found\n",
-			expectedImage:   false,
-			expectedOgCache: "",
-			expectedOgCode:  "",
+			name:          "404 URL",
+			url:           fmt.Sprintf("/get?url=%s/invalid", mockServer.URL),
+			expectedCode:  http.StatusNotFound,
+			expectedBody:  "Requested URL not found\n",
+			expectedImage: false,
 		},
 		{
-			name:            "Domain not allowed",
-			url:             "/get?url=nytimes.com",
-			expectedCode:    http.StatusBadRequest,
-			expectedBody:    "domain nytimes.com not allowed\n",
-			expectedImage:   false,
-			expectedOgCache: "",
-			expectedOgCode:  "",
+			name:          "Domain not allowed",
+			url:           "/get?url=nytimes.com",
+			expectedCode:  http.StatusBadRequest,
+			expectedBody:  "domain nytimes.com not allowed\n",
+			expectedImage: false,
 		},
 		{
 			name:            "Valid URL",
 			url:             fmt.Sprintf("/get?url=%s", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "MISS",
 			expectedOgCode:  "0",
@@ -127,7 +120,6 @@ func TestEndpoints(t *testing.T) {
 			name:            "Cached Image",
 			url:             fmt.Sprintf("/get?url=%s&width=1200", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "2",
@@ -145,7 +137,6 @@ func TestEndpoints(t *testing.T) {
 			name:            "Cache key GOOD (no cache)",
 			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "MISS",
 			expectedOgCode:  "0",
@@ -154,7 +145,6 @@ func TestEndpoints(t *testing.T) {
 			name:            "Cache key GOOD (cached)",
 			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "2",
@@ -163,7 +153,6 @@ func TestEndpoints(t *testing.T) {
 			name:            "Cache key BAD (has cache)",
 			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=12345", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "3",
@@ -172,17 +161,16 @@ func TestEndpoints(t *testing.T) {
 			name:            "Cache key CHANGE",
 			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=987654321", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "MISS",
 			expectedOgCode:  "0",
 			newCacheKey:     "987654321",
+			maxReqTime:      time.Second,
 		},
 		{
 			name:            "Cache key OLD (has cache)",
 			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "3",
@@ -191,7 +179,6 @@ func TestEndpoints(t *testing.T) {
 			name:            "Regen Param (bad value)",
 			url:             fmt.Sprintf("/get?url=%s&_regen_=12345", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "2",
@@ -200,10 +187,18 @@ func TestEndpoints(t *testing.T) {
 			name:            "Regen Param (good value)",
 			url:             fmt.Sprintf("/get?url=%s&_regen_=jamesconnolly", mockServer.URL),
 			expectedCode:    http.StatusOK,
-			expectedBody:    "",
 			expectedImage:   true,
 			expectedOgCache: "MISS",
 			expectedOgCode:  "1",
+		},
+		{
+			name:            "Delay param",
+			url:             fmt.Sprintf("/get?url=%s&_regen_=jamesconnolly&delay=1000", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedImage:   true,
+			expectedOgCache: "MISS",
+			expectedOgCode:  "1",
+			minReqTime:      time.Second,
 		},
 	}
 
@@ -215,28 +210,28 @@ func TestEndpoints(t *testing.T) {
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
-			var start time.Time
-
 			req, err := http.NewRequest("GET", tc.url, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if tc.expectedImage {
-				start = time.Now()
-			}
+			start := time.Now()
 
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
 
 			assert.Equal(t, tc.expectedCode, rr.Code)
 
-			if tc.expectedImage {
-				duration := time.Since(start).Milliseconds()
-				imageProcessingTimes = append(imageProcessingTimes, duration)
+			if tc.maxReqTime != 0 {
+				assert.Less(t, time.Since(start), tc.maxReqTime)
+			} else if tc.minReqTime != 0 {
+				assert.Greater(t, time.Since(start), tc.minReqTime)
 			}
 
 			if tc.expectedImage {
+				if tc.minReqTime == 0 {
+					imageProcessingTimes = append(imageProcessingTimes, time.Since(start).Milliseconds())
+				}
 				assert.Equal(t, "image/jpeg", rr.Header().Get("Content-Type"))
 				assert.Equal(t, tc.expectedOgCode, rr.Header().Get("x-og-code"))
 				assert.Equal(t, tc.expectedOgCache, rr.Header().Get("x-og-cache"))
