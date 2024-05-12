@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"image/jpeg"
-	"image/png"
 	"log"
 	"log/slog"
 	"net/http"
@@ -18,6 +15,7 @@ import (
 	"time"
 
 	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/internal/browsercontext"
 	"github.com/henrygd/social-image-server/internal/concurrency"
@@ -164,7 +162,7 @@ func setUpRouter() *http.ServeMux {
 
 		// if request has cache_key but pageCacheKey doesn't match
 		if paramCacheKey != "" && pageCacheKey != paramCacheKey {
-			slog.Info("Cache key does not match", "url", validatedUrl, "request", paramCacheKey, "origin", pageCacheKey)
+			slog.Debug("Cache key does not match", "url", validatedUrl, "request", paramCacheKey, "origin", pageCacheKey)
 			// return cached image if it exists
 			if cachedImage.File != "" {
 				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "3")
@@ -232,6 +230,14 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 	}
 	defer cancel()
 
+	// create file for screenshot
+	f, err := os.CreateTemp(global.ImageDir, "*.jpg")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	filepath = f.Name()
+
 	tasks := chromedp.Tasks{}
 
 	// set prefers dark mode
@@ -243,43 +249,32 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 		}))
 	}
 
-	// navigate to url and capture screenshot to buf
-	var buf = make([]byte, 0, 200*1024)
+	// navigate to url
 	tasks = append(tasks,
 		// chromedp.Emulate(device.IPad),
 		chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 		chromedp.Navigate(validatedUrl),
 		// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
-		chromedp.Sleep(time.Duration(delay)*time.Millisecond),
-		chromedp.CaptureScreenshot(&buf))
+	)
+	// add delay
+	if delay != 0 {
+		tasks = append(tasks, chromedp.Sleep(time.Duration(delay)*time.Millisecond))
+	}
+	// take screenshot
+	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
+		buf, err := page.CaptureScreenshot().WithFormat("jpeg").WithQuality(92).Do(ctx)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath, buf, 0644)
+	}))
 
 	if err = chromedp.Run(taskCtx, tasks); err != nil {
+		// clean up empty file if tasks failed
+		os.Remove(filepath)
 		return "", err
 	}
 
-	// save image
-	f, err := os.CreateTemp(global.ImageDir, "*.jpg")
-	if err != nil {
-		return "", err
-	}
-	filepath = f.Name()
-
-	// decode the png
-	decodedPng, err := png.Decode(bytes.NewReader(buf))
-	if err != nil {
-		return "", err
-	}
-	// encode the jpeg
-	buff := new(bytes.Buffer)
-	err = jpeg.Encode(buff, decodedPng, &jpeg.Options{Quality: 90})
-	if err != nil {
-		return "", err
-	}
-	// write image to file
-	err = os.WriteFile(filepath, buff.Bytes(), 0o644)
-	if err != nil {
-		return "", err
-	}
 	// add image to database
 	err = database.AddImage(&database.SocialImage{
 		Url:      urlKey,
@@ -294,7 +289,6 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 }
 
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
-
 func cleanup() {
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
@@ -313,8 +307,6 @@ func cleanup() {
 func serveImage(w http.ResponseWriter, r *http.Request, filename, status, code string) {
 	w.Header().Set("X-Og-Cache", status)
 	w.Header().Set("X-Og-Code", code)
-	w.Header().Set("Content-Type", "image/jpeg")
-	// w.Header().Set("Content-Length", strconv.Itoa(len(filename)))
 	// w.Header().Set("Cache-Control", "public, max-age=86400")
 	http.ServeFile(w, r, filename)
 }
@@ -342,7 +334,8 @@ func validateUrl(supplied_url string) (string, error) {
 	return u.Scheme + "://" + u.Host + u.Path, nil
 }
 
-// Check if the status code of a url is 200 OK
+// Check if the status code of a url is 200 OK and extract cache_key
+// possible to do in browser but this is more efficient for 404s / bad cache keys
 func checkUrlOk(validatedUrl string) (bool, string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
