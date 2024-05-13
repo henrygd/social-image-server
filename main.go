@@ -25,10 +25,21 @@ import (
 	"github.com/henrygd/social-image-server/internal/update"
 )
 
-var version = "0.0.5"
+var version = "0.0.6"
 
-var allowedDomains string
-var allowedDomainsMap = make(map[string]bool)
+var allowedDomainsMap map[string]bool
+
+var imageOptions = struct {
+	Format    string
+	Extension string
+	Quality   int64
+	Width     float64
+}{
+	Format:    "jpeg",
+	Extension: ".jpg",
+	Quality:   92,
+	Width:     2000,
+}
 
 func main() {
 	// handle flags
@@ -58,7 +69,6 @@ func main() {
 	}
 
 	slog.Info("Social Image Server", "v", version)
-	slog.Debug("ALLOWED_DOMAINS", "value", allowedDomains)
 
 	router := setUpRouter()
 
@@ -81,12 +91,40 @@ func setUpRouter() *http.ServeMux {
 	database.Init()
 	browsercontext.Init()
 
-	allowedDomains = os.Getenv("ALLOWED_DOMAINS")
 	// create map of allowed allowedDomains for quick lookup
-	for _, domain := range strings.Split(allowedDomains, ",") {
-		domain = strings.TrimSpace(domain)
-		if domain != "" {
-			allowedDomainsMap[domain] = true
+	if allowedDomains, ok := os.LookupEnv("ALLOWED_DOMAINS"); ok {
+		slog.Debug("ALLOWED_DOMAINS", "value", allowedDomains)
+		domains := strings.Split(allowedDomains, ",")
+		allowedDomainsMap = make(map[string]bool, len(domains))
+		for _, domain := range domains {
+			domain = strings.TrimSpace(domain)
+			if domain != "" {
+				allowedDomainsMap[domain] = true
+			}
+		}
+	}
+
+	// set image format
+	if os.Getenv("IMG_FORMAT") == "png" {
+		imageOptions.Format = "png"
+		imageOptions.Extension = ".png"
+	}
+	// set image width
+	if width, ok := os.LookupEnv("IMG_WIDTH"); ok {
+		var err error
+		imageOptions.Width, err = strconv.ParseFloat(width, 64)
+		if err != nil || imageOptions.Width < 1000 || imageOptions.Width > 2500 {
+			slog.Error("Invalid IMG_WIDTH", "value", width, "min", 1000, "max", 2500)
+			os.Exit(1)
+		}
+	}
+	// set image quality
+	if quality, ok := os.LookupEnv("IMG_QUALITY"); ok {
+		var err error
+		imageOptions.Quality, err = strconv.ParseInt(quality, 10, 64)
+		if err != nil || imageOptions.Quality < 1 || imageOptions.Quality > 100 {
+			slog.Error("Invalid IMG_QUALITY", "value", quality, "min", 1, "max", 100)
+			os.Exit(1)
 		}
 	}
 
@@ -206,7 +244,7 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 	// force 1.9:1 aspect ratio
 	viewportHeight = int64(float64(viewportWidth) / 1.9)
 	// calculate scale to make image 2000px wide
-	scale := 2000 / float64(viewportWidth)
+	scale := imageOptions.Width / float64(viewportWidth)
 
 	// set delay
 	paramDelay := params.Get("delay")
@@ -231,7 +269,7 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 	defer cancel()
 
 	// create file for screenshot
-	f, err := os.CreateTemp(global.ImageDir, "*.jpg")
+	f, err := os.CreateTemp(global.ImageDir, "*"+imageOptions.Extension)
 	if err != nil {
 		return "", err
 	}
@@ -262,7 +300,8 @@ func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, par
 	}
 	// take screenshot
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-		buf, err := page.CaptureScreenshot().WithFormat("jpeg").WithQuality(92).Do(ctx)
+		format := page.CaptureScreenshotFormat(imageOptions.Format)
+		buf, err := page.CaptureScreenshot().WithFormat(format).WithQuality(imageOptions.Quality).Do(ctx)
 		if err != nil {
 			return err
 		}
@@ -327,7 +366,7 @@ func validateUrl(supplied_url string) (string, error) {
 	}
 
 	// check if host is in whitelist
-	if allowedDomains != "" && !allowedDomainsMap[u.Host] {
+	if allowedDomainsMap != nil && !allowedDomainsMap[u.Host] {
 		return "", errors.New("domain " + u.Host + " not allowed")
 	}
 

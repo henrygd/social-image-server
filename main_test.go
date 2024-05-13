@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -16,7 +20,8 @@ import (
 
 var mockServer *httptest.Server
 
-var cacheKey = "abcdef123456"
+var regenKey = "jamesconnolly"
+var startingCacheKey = "abcdef123456"
 var ogImageRequestParam string
 
 func TestMain(m *testing.M) {
@@ -27,7 +32,8 @@ func TestMain(m *testing.M) {
 	dataDir := filepath.Join(os.TempDir(), "social-image-server-test")
 	os.Setenv("ALLOWED_DOMAINS", serverUrl.Host)
 	os.Setenv("DATA_DIR", dataDir)
-	os.Setenv("REGEN_KEY", "jamesconnolly")
+	os.Setenv("REGEN_KEY", regenKey)
+	os.Setenv("IMG_WIDTH", "1000")
 	// Run the tests
 	code := m.Run()
 	// Clean up after tests
@@ -49,7 +55,7 @@ func createMockServer() *httptest.Server {
 			return
 		}
 		if r.URL.Path == "/cachekey" {
-			ogImageUrl := fmt.Sprintf("https://test.com/get?url=%s/cachekey&cache_key=%s", r.Host, cacheKey)
+			ogImageUrl := fmt.Sprintf("https://test.com/get?url=%s/cachekey&cache_key=%s", r.Host, startingCacheKey)
 			htmlContent := `
 			<html><head><title>valid site</title>
 			<meta property="og:image" content="` + ogImageUrl + `" />
@@ -64,7 +70,7 @@ func createMockServer() *httptest.Server {
 	return server
 }
 
-func TestEndpoints(t *testing.T) {
+func TestApi(t *testing.T) {
 	router := setUpRouter()
 
 	// Test cases
@@ -143,7 +149,7 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "Cache key GOOD (cached)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -169,27 +175,11 @@ func TestEndpoints(t *testing.T) {
 		},
 		{
 			name:            "Cache key OLD (has cache)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
+			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
 			expectedOgCode:  "3",
-		},
-		{
-			name:            "Regen Param (bad value)",
-			url:             fmt.Sprintf("/get?url=%s&_regen_=12345", mockServer.URL),
-			expectedCode:    http.StatusOK,
-			expectedImage:   true,
-			expectedOgCache: "HIT",
-			expectedOgCode:  "2",
-		},
-		{
-			name:            "Regen Param (good value)",
-			url:             fmt.Sprintf("/get?url=%s&_regen_=jamesconnolly", mockServer.URL),
-			expectedCode:    http.StatusOK,
-			expectedImage:   true,
-			expectedOgCache: "MISS",
-			expectedOgCode:  "1",
 		},
 		{
 			name:            "Delay param",
@@ -200,13 +190,21 @@ func TestEndpoints(t *testing.T) {
 			expectedOgCode:  "1",
 			minReqTime:      time.Second,
 		},
+		{
+			name:            "Regen Param (bad value)",
+			url:             fmt.Sprintf("/get?url=%s&_regen_=12345", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedImage:   true,
+			expectedOgCache: "HIT",
+			expectedOgCode:  "2",
+		},
 	}
 
 	var imageProcessingTimes []int64
 
 	for _, tc := range testCases {
 		if tc.newCacheKey != "" {
-			cacheKey = tc.newCacheKey
+			startingCacheKey = tc.newCacheKey
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
@@ -256,5 +254,57 @@ func TestEndpoints(t *testing.T) {
 		assert.Equal(t, imageProcessingTimes[0], longestTime)
 	})
 
-	// todo: same url mutex test, CACHE_TIME test
+	var img image.Image
+	var imgOneContentLength int64
+
+	t.Run("Regen param (good value)", func(t *testing.T) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		assert.Equal(t, "image/jpeg", rr.Header().Get("Content-Type"))
+		assert.Equal(t, "1", rr.Header().Get("x-og-code"))
+		assert.Equal(t, "MISS", rr.Header().Get("x-og-cache"))
+		// convert body to jpeg to use for width test
+		img, _ = jpeg.Decode(bytes.NewReader(rr.Body.Bytes()))
+		imgOneContentLength, _ = strconv.ParseInt(rr.Header().Get("Content-Length"), 10, 64)
+	})
+
+	t.Run("IMG_WIDTH", func(t *testing.T) {
+		assert.Equal(t, 1000, img.Bounds().Dx())
+	})
+
+	t.Run("IMG_QUALITY", func(t *testing.T) {
+		os.Setenv("IMG_QUALITY", "50")
+		nRouter := setUpRouter()
+		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		nRouter.ServeHTTP(rr, req)
+		assert.Equal(t, "image/jpeg", rr.Header().Get("Content-Type"))
+		assert.Equal(t, "1", rr.Header().Get("x-og-code"))
+		assert.Equal(t, "MISS", rr.Header().Get("x-og-cache"))
+		contentLength, _ := strconv.ParseInt(rr.Header().Get("Content-Length"), 10, 64)
+		assert.Less(t, contentLength, imgOneContentLength)
+	})
+
+	t.Run("IMG_FORMAT", func(t *testing.T) {
+		os.Setenv("IMG_FORMAT", "png")
+		nRouter := setUpRouter()
+		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		nRouter.ServeHTTP(rr, req)
+		assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+		assert.Equal(t, "1", rr.Header().Get("x-og-code"))
+		assert.Equal(t, "MISS", rr.Header().Get("x-og-cache"))
+	})
+
+	// todo: CACHE_TIME test
 }

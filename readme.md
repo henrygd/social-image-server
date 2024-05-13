@@ -58,7 +58,7 @@ A useful site for previewing or generating boilerplate HTML is [heymeta.com](htt
 | Name        | Default | Description                                                                                                                                                                                     |
 | ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `url`       | -       | URL to generate image for.                                                                                                                                                                      |
-| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to 2000px width.                                                                                                         |
+| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to `IMG_WIDTH` width.                                                                                                    |
 | `delay`     | 0       | Delay in milliseconds after page load before generating image.                                                                                                                                  |
 | `dark`      | false   | Sets prefers-color-scheme to dark.                                                                                                                                                              |
 | `cache_key` | -       | Regenerates image if changed. This is validated using your origin URL. If the `cache_key` doesn't match, the server will return a previously cached image (or error if no cached image exists). |
@@ -72,6 +72,9 @@ A useful site for previewing or generating boilerplate HTML is [heymeta.com](htt
 | `CACHE_TIME`      | 30 days | Time to cache images on server.                                                                                                    |
 | `DATA_DIR`        | ./data  | Directory to store program data (images and database).                                                                             |
 | `FONT_FAMILY`     | -       | Change browser fallback font. Must be available on your system / image.                                                            |
+| `IMG_FORMAT`      | jpeg    | Image format. Valid values: "jpeg", "png".                                                                                         |
+| `IMG_QUALITY`     | 92      | Compression quality (jpeg only).                                                                                                   |
+| `IMG_WIDTH`       | 2000    | Width of output image in pixels.                                                                                                   |
 | `LOG_LEVEL`       | info    | Logging level. Valid values: "debug", "info", "warn", "error".                                                                     |
 | `PERSIST_BROWSER` | 5m      | Time to keep the browser process running after the last image generation. Valid units: "ms", "s", "m", "h". See FAQ for more info. |
 | `PORT`            | 8080    | Port to listen on.                                                                                                                 |
@@ -101,6 +104,10 @@ Probably because the website isn't providing fonts over the network, and the bro
 If you're not using a remote browser instance, you should be able to change the font using the `FONT_FAMILY` environment variable.
 
 If you are using a remote browser, try setting the `--system-font-family` flag. Check the [docker-compose](https://github.com/henrygd/social-image-server/blob/main/docker-compose.yml) for an example.
+
+### Why is webp not an `IMG_FORMAT` option?
+
+From what I can tell, Facebook and LinkedIn (and likely others) don't support webp open graph images. If I'm wrong, let me know and I'll add it.
 
 ## Remote Browser Instance
 
