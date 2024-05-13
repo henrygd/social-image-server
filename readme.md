@@ -83,7 +83,7 @@ A useful site for previewing or generating boilerplate HTML is [heymeta.com](htt
 
 ## Frequently Asked Questions
 
-### Does the server require Chrome or Chromium running in the background indefinitely?
+### Does this require Chrome or Chromium running in the background indefinitely?
 
 Only if you use `REMOTE_URL` to connect with a remote browser process. Otherwise the server will manage headless browser processes as necessary.
 
@@ -183,7 +183,7 @@ import {version} from '../../package.json';
 ---
 
 <head>
-  <meta name="og:image" content={`https://your-server/get?url=${Astro.url}&cache_key=${version}`} />
+  <meta property="og:image" content={`https://your-server/get?url=${Astro.url}&cache_key=${version}`} />
 </head>
 ```
 
@@ -201,3 +201,17 @@ import {version} from '../../package.json';
   <meta property="og:image" content="<?php echo $og_image_url ?>"/>
 </head>
 ```
+
+## Future additions
+
+If you have any feedback or ideas for improvement, please [post a new discussion](https://github.com/henrygd/social-image-server/discussions).
+
+I'm thinking about a `/template` endpoint that allows you to render custom templates.
+
+You would make a static page / site -- like an html file or output of `vite build` -- using variables like `<h1>{{title}}</h1>` `<p>{{author}}</p>`, then put it in `data/templates`.
+
+A request to `/template?t=my-template&title=Doh!&author=Homer` would render `data/templates/my-template` with `Doh!` and `Homer` and return the image.
+
+<!-- personal note: for security we could require the origin url be passed in, then we could check that the origin is in the whitelist and the html contains the request (override with _regen_). similar to cache_key. -->
+
+These templates could also be shared with other users.
