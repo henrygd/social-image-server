@@ -272,6 +272,18 @@ func TestApi(t *testing.T) {
 		imgOneContentLength, _ = strconv.ParseInt(rr.Header().Get("Content-Length"), 10, 64)
 	})
 
+	t.Run("Format param png", func(t *testing.T) {
+		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s&format=png", mockServer.URL, regenKey), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		assert.Equal(t, "image/png", rr.Header().Get("Content-Type"))
+		assert.Equal(t, "1", rr.Header().Get("x-og-code"))
+		assert.Equal(t, "MISS", rr.Header().Get("x-og-cache"))
+	})
+
 	t.Run("IMG_WIDTH", func(t *testing.T) {
 		assert.Equal(t, 1000, img.Bounds().Dx())
 	})

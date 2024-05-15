@@ -47,6 +47,17 @@ func getDelay(params url.Values) (delay int64) {
 	return delay
 }
 
+func getImageFormat(params url.Values) (imageFormat string, imageExtension string) {
+	paramFormat := params.Get("format")
+	if paramFormat == "png" {
+		return "png", ".png"
+	}
+	if paramFormat == "jpeg" {
+		return "jpeg", ".jpg"
+	}
+	return global.ImageOptions.Format, global.ImageOptions.Extension
+}
+
 // getContext checks if the browser is remote or local and gets the corresponding context and functions.
 func getContext() (taskCtx context.Context, cancel context.CancelFunc, resetBrowserTimer func()) {
 	if browsercontext.IsRemoteBrowser {
@@ -71,6 +82,8 @@ func takeScreenshot(validatedUrl string, params url.Values) (filepath string, er
 	// get delay
 	delay := getDelay(params)
 
+	imageFormat, imageExtension := getImageFormat(params)
+
 	// get context
 	taskCtx, cancel, resetBrowserTimer := getContext()
 	defer cancel()
@@ -79,7 +92,7 @@ func takeScreenshot(validatedUrl string, params url.Values) (filepath string, er
 	}
 
 	// create file for screenshot
-	f, err := os.CreateTemp(global.ImageDir, "*"+imageOptions.Extension)
+	f, err := os.CreateTemp(global.ImageDir, "*"+imageExtension)
 	if err != nil {
 		return "", err
 	}
@@ -110,7 +123,7 @@ func takeScreenshot(validatedUrl string, params url.Values) (filepath string, er
 	}
 	// take screenshot
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-		format := page.CaptureScreenshotFormat(imageOptions.Format)
+		format := page.CaptureScreenshotFormat(imageFormat)
 		buf, err := page.CaptureScreenshot().WithFormat(format).WithQuality(imageOptions.Quality).Do(ctx)
 		if err != nil {
 			return err
