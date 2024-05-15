@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,36 +9,23 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/chromedp/cdproto/emulation"
-	"github.com/chromedp/cdproto/page"
-	"github.com/chromedp/chromedp"
 	"github.com/henrygd/social-image-server/internal/browsercontext"
 	"github.com/henrygd/social-image-server/internal/concurrency"
 	"github.com/henrygd/social-image-server/internal/database"
 	"github.com/henrygd/social-image-server/internal/global"
 	"github.com/henrygd/social-image-server/internal/scraper"
+	"github.com/henrygd/social-image-server/internal/screenshot"
+	"github.com/henrygd/social-image-server/internal/templates"
 	"github.com/henrygd/social-image-server/internal/update"
 )
 
 var version = "0.0.6"
 
 var allowedDomainsMap map[string]bool
-
-var imageOptions = struct {
-	Format    string
-	Extension string
-	Quality   int64
-	Width     float64
-}{
-	Format:    "jpeg",
-	Extension: ".jpg",
-	Quality:   92,
-	Width:     2000,
-}
 
 func main() {
 	// handle flags
@@ -104,35 +90,44 @@ func setUpRouter() *http.ServeMux {
 		}
 	}
 
-	// set image format
-	if os.Getenv("IMG_FORMAT") == "png" {
-		imageOptions.Format = "png"
-		imageOptions.Extension = ".png"
-	}
-	// set image width
-	if width, ok := os.LookupEnv("IMG_WIDTH"); ok {
-		var err error
-		imageOptions.Width, err = strconv.ParseFloat(width, 64)
-		if err != nil || imageOptions.Width < 1000 || imageOptions.Width > 2500 {
-			slog.Error("Invalid IMG_WIDTH", "value", width, "min", 1000, "max", 2500)
-			os.Exit(1)
-		}
-	}
-	// set image quality
-	if quality, ok := os.LookupEnv("IMG_QUALITY"); ok {
-		var err error
-		imageOptions.Quality, err = strconv.ParseInt(quality, 10, 64)
-		if err != nil || imageOptions.Quality < 1 || imageOptions.Quality > 100 {
-			slog.Error("Invalid IMG_QUALITY", "value", quality, "min", 1, "max", 100)
-			os.Exit(1)
-		}
-	}
-
 	router := http.NewServeMux()
 
 	// redirect to github page if index
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://github.com/henrygd/social-image-server", http.StatusFound)
+	})
+
+	// template route
+	router.HandleFunc("/template", func(w http.ResponseWriter, r *http.Request) {
+		params := r.URL.Query()
+		templateName := params.Get("t")
+		if templateName == "" {
+			http.Error(w, "Missing t parameter", http.StatusBadRequest)
+			return
+		}
+		// check that template directory exists
+		if _, err := os.Stat(filepath.Join(global.TemplateDir, templateName)); os.IsNotExist(err) {
+			http.Error(w, "Template not found", http.StatusBadRequest)
+			return
+		}
+		// start static server to serve template
+		server, _, err := templates.TempServer(templateName)
+		if err != nil {
+			handleServerError(w, err)
+			return
+		}
+		defer server.Close()
+		defer slog.Debug("Template server stopped")
+		// defer listener.Close()
+		serverUrl := "http://" + server.Addr
+		slog.Debug("Taking screenshot", "template", templateName)
+		filename, err := screenshot.Template(serverUrl, params)
+		if err != nil {
+			handleServerError(w, err)
+			return
+		}
+		defer os.Remove(filename)
+		serveImage(w, r, filename, "ok", "200")
 	})
 
 	router.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +160,7 @@ func setUpRouter() *http.ServeMux {
 				return
 			}
 			// take screenshot
-			if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
+			if filepath, err := screenshot.Url(validatedUrl, urlKey, pageCacheKey, params); err == nil {
 				serveImage(w, r, filepath, "MISS", "1")
 			} else {
 				handleServerError(w, err)
@@ -212,7 +207,7 @@ func setUpRouter() *http.ServeMux {
 		}
 
 		// if request doesn't meet above conditions, take screenshot
-		if filepath, err := takeScreenshot(validatedUrl, urlKey, pageCacheKey, params); err == nil {
+		if filepath, err := screenshot.Url(validatedUrl, urlKey, pageCacheKey, params); err == nil {
 			serveImage(w, r, filepath, "MISS", "0")
 		} else {
 			handleServerError(w, err)
@@ -220,111 +215,6 @@ func setUpRouter() *http.ServeMux {
 	})
 
 	return router
-}
-
-func takeScreenshot(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
-	slog.Debug("Taking screenshot", "url", validatedUrl)
-	// add og-image-request parameter to url
-	validatedUrl += "?og-image-request=true"
-
-	// set viewport dimensions
-	paramWidth := params.Get("width")
-	var viewportWidth int64
-	var viewportHeight int64
-	if paramWidth != "" {
-		viewportWidth, _ = strconv.ParseInt(paramWidth, 10, 64)
-	}
-	if viewportWidth == 0 {
-		viewportWidth = 1400
-	} else if viewportWidth > 2400 {
-		viewportWidth = 2400
-	} else if viewportWidth < 400 {
-		viewportWidth = 400
-	}
-	// force 1.9:1 aspect ratio
-	viewportHeight = int64(float64(viewportWidth) / 1.9)
-	// calculate scale to make image 2000px wide
-	scale := imageOptions.Width / float64(viewportWidth)
-
-	// set delay
-	paramDelay := params.Get("delay")
-	var delay int64
-	if paramDelay != "" {
-		delay, _ = strconv.ParseInt(paramDelay, 10, 64)
-		if delay > 10000 {
-			delay = 10000
-		}
-	}
-
-	var taskCtx context.Context
-	var cancel context.CancelFunc
-	if browsercontext.IsRemoteBrowser {
-		// if using remote browser, use remote context
-		taskCtx, cancel = browsercontext.GetRemoteContext()
-	} else {
-		var resetBrowserTimer func()
-		taskCtx, cancel, resetBrowserTimer = browsercontext.GetTaskContext()
-		defer resetBrowserTimer()
-	}
-	defer cancel()
-
-	// create file for screenshot
-	f, err := os.CreateTemp(global.ImageDir, "*"+imageOptions.Extension)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	filepath = f.Name()
-
-	tasks := chromedp.Tasks{}
-
-	// set prefers dark mode
-	if params.Get("dark") == "true" {
-		tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-			emulatedMedia := emulation.SetEmulatedMedia()
-			emulatedMedia.Features = append(emulatedMedia.Features, &emulation.MediaFeature{Name: "prefers-color-scheme", Value: "dark"})
-			return emulatedMedia.Do(ctx)
-		}))
-	}
-
-	// navigate to url
-	tasks = append(tasks,
-		// chromedp.Emulate(device.IPad),
-		chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
-		chromedp.Navigate(validatedUrl),
-		// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
-	)
-	// add delay
-	if delay != 0 {
-		tasks = append(tasks, chromedp.Sleep(time.Duration(delay)*time.Millisecond))
-	}
-	// take screenshot
-	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
-		format := page.CaptureScreenshotFormat(imageOptions.Format)
-		buf, err := page.CaptureScreenshot().WithFormat(format).WithQuality(imageOptions.Quality).Do(ctx)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(filepath, buf, 0644)
-	}))
-
-	if err = chromedp.Run(taskCtx, tasks); err != nil {
-		// clean up empty file if tasks failed
-		os.Remove(filepath)
-		return "", err
-	}
-
-	// add image to database
-	err = database.AddImage(&database.SocialImage{
-		Url:      urlKey,
-		File:     strings.TrimPrefix(filepath, global.ImageDir),
-		CacheKey: pageCacheKey,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return filepath, nil
 }
 
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles
