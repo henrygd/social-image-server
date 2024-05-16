@@ -55,7 +55,7 @@ func createMockServer() *httptest.Server {
 			return
 		}
 		if r.URL.Path == "/cachekey" {
-			ogImageUrl := fmt.Sprintf("https://test.com/get?url=%s/cachekey&cache_key=%s", r.Host, startingCacheKey)
+			ogImageUrl := fmt.Sprintf("https://test.com/capture?url=%s/cachekey&cache_key=%s", r.Host, startingCacheKey)
 			htmlContent := `
 			<html><head><title>valid site</title>
 			<meta property="og:image" content="` + ogImageUrl + `" />
@@ -95,28 +95,28 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:          "Invalid URL",
-			url:           "/get?url=lkj laskd",
+			url:           "/capture?url=lkj laskd",
 			expectedCode:  http.StatusBadRequest,
 			expectedBody:  "invalid url\n",
 			expectedImage: false,
 		},
 		{
 			name:          "404 URL",
-			url:           fmt.Sprintf("/get?url=%s/invalid", mockServer.URL),
+			url:           fmt.Sprintf("/capture?url=%s/invalid", mockServer.URL),
 			expectedCode:  http.StatusNotFound,
 			expectedBody:  "Requested URL not found\n",
 			expectedImage: false,
 		},
 		{
 			name:          "Domain not allowed",
-			url:           "/get?url=nytimes.com",
+			url:           "/capture?url=nytimes.com",
 			expectedCode:  http.StatusBadRequest,
 			expectedBody:  "domain nytimes.com not allowed\n",
 			expectedImage: false,
 		},
 		{
 			name:            "Valid URL",
-			url:             fmt.Sprintf("/get?url=%s", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "MISS",
@@ -124,7 +124,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cached Image",
-			url:             fmt.Sprintf("/get?url=%s&width=1200", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s&width=1200", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -132,7 +132,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key BAD (no cache)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=12345", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=12345", mockServer.URL),
 			expectedCode:    http.StatusBadRequest,
 			expectedBody:    "request cache_key does not match origin cache_key\n",
 			expectedImage:   false,
@@ -141,7 +141,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key GOOD (no cache)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=abcdef123456", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "MISS",
@@ -149,7 +149,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key GOOD (cached)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -157,7 +157,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key BAD (has cache)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=12345", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=12345", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -165,7 +165,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key CHANGE",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=987654321", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=987654321", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "MISS",
@@ -175,7 +175,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Cache key OLD (has cache)",
-			url:             fmt.Sprintf("/get?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
+			url:             fmt.Sprintf("/capture?url=%s/cachekey&cache_key=%s", mockServer.URL, startingCacheKey),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -183,7 +183,7 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Delay param",
-			url:             fmt.Sprintf("/get?url=%s&_regen_=jamesconnolly&delay=1000", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s&_regen_=jamesconnolly&delay=1000", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "MISS",
@@ -192,7 +192,15 @@ func TestApi(t *testing.T) {
 		},
 		{
 			name:            "Regen Param (bad value)",
-			url:             fmt.Sprintf("/get?url=%s&_regen_=12345", mockServer.URL),
+			url:             fmt.Sprintf("/capture?url=%s&_regen_=12345", mockServer.URL),
+			expectedCode:    http.StatusOK,
+			expectedImage:   true,
+			expectedOgCache: "HIT",
+			expectedOgCode:  "2",
+		},
+		{
+			name:            "/get route works correctly",
+			url:             fmt.Sprintf("/get?url=%s", mockServer.URL),
 			expectedCode:    http.StatusOK,
 			expectedImage:   true,
 			expectedOgCache: "HIT",
@@ -258,7 +266,7 @@ func TestApi(t *testing.T) {
 	var imgOneContentLength int64
 
 	t.Run("Regen param (good value)", func(t *testing.T) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("/capture?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -273,7 +281,7 @@ func TestApi(t *testing.T) {
 	})
 
 	t.Run("Format param png", func(t *testing.T) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s&format=png", mockServer.URL, regenKey), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("/capture?url=%s&_regen_=%s&format=png", mockServer.URL, regenKey), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -291,7 +299,7 @@ func TestApi(t *testing.T) {
 	t.Run("IMG_QUALITY", func(t *testing.T) {
 		os.Setenv("IMG_QUALITY", "50")
 		nRouter := setUpRouter()
-		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("/capture?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -307,7 +315,7 @@ func TestApi(t *testing.T) {
 	t.Run("IMG_FORMAT", func(t *testing.T) {
 		os.Setenv("IMG_FORMAT", "png")
 		nRouter := setUpRouter()
-		req, err := http.NewRequest("GET", fmt.Sprintf("/get?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
+		req, err := http.NewRequest("GET", fmt.Sprintf("/capture?url=%s&_regen_=%s", mockServer.URL, regenKey), nil)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -159,7 +159,7 @@ func Url(validatedUrl string, urlKey string, pageCacheKey string, params url.Val
 	}
 
 	// add image to database
-	err = database.AddImage(&database.SocialImage{
+	err = database.AddImage(&database.CaptureImage{
 		Url:      urlKey,
 		File:     strings.TrimPrefix(filepath, global.ImageDir),
 		CacheKey: pageCacheKey,

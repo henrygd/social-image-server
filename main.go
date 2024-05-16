@@ -92,129 +92,134 @@ func setUpRouter() *http.ServeMux {
 
 	router := http.NewServeMux()
 
-	// redirect to github page if index
+	// endpoints
+	router.HandleFunc("/capture", handleCaptureRoute)
+	router.HandleFunc("/template", handleTemplateRoute)
+	// get is previous name for capture route - leaving for compatibility
+	router.HandleFunc("/get", handleCaptureRoute)
+
+	// redirect to github docs if not found
 	router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "https://github.com/henrygd/social-image-server", http.StatusFound)
+		http.Redirect(w, r, "https://github.com/henrygd/social-image-server/blob/main/readme.md", http.StatusFound)
 	})
 
-	// template route
-	router.HandleFunc("/template", func(w http.ResponseWriter, r *http.Request) {
-		params := r.URL.Query()
-		templateName := params.Get("t")
-		if templateName == "" {
-			http.Error(w, "Missing t parameter", http.StatusBadRequest)
-			return
-		}
-		// check that template directory exists
-		if _, err := os.Stat(filepath.Join(global.TemplateDir, templateName)); os.IsNotExist(err) {
-			http.Error(w, "Template not found", http.StatusBadRequest)
-			return
-		}
-		// start static server to serve template
-		server, _, err := templates.TempServer(templateName)
-		if err != nil {
-			handleServerError(w, err)
-			return
-		}
-		defer server.Close()
-		defer slog.Debug("Template server stopped")
-		// defer listener.Close()
-		serverUrl := "http://" + server.Addr
-		slog.Debug("Taking screenshot", "template", templateName)
-		filename, err := screenshot.Template(serverUrl, params)
-		if err != nil {
-			handleServerError(w, err)
-			return
-		}
-		defer os.Remove(filename)
-		serveImage(w, r, filename, "ok", "200")
-	})
+	return router
+}
 
-	router.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
-		// get supplied_url parameter
-		params := r.URL.Query()
+func handleTemplateRoute(w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	templateName := params.Get("t")
+	if templateName == "" {
+		http.Error(w, "Missing t parameter", http.StatusBadRequest)
+		return
+	}
+	// check that template directory exists
+	if _, err := os.Stat(filepath.Join(global.TemplateDir, templateName)); os.IsNotExist(err) {
+		http.Error(w, "Template not found", http.StatusBadRequest)
+		return
+	}
+	// start static server to serve template
+	server, _, err := templates.TempServer(templateName)
+	if err != nil {
+		handleServerError(w, err)
+		return
+	}
+	defer server.Close()
+	defer slog.Debug("Template server stopped")
+	// defer listener.Close()
+	serverUrl := "http://" + server.Addr
+	slog.Debug("Taking screenshot", "template", templateName)
+	filename, err := screenshot.Template(serverUrl, params)
+	if err != nil {
+		handleServerError(w, err)
+		return
+	}
+	defer os.Remove(filename)
+	serveImage(w, r, filename, "ok", "200")
+}
 
-		// validate url
-		validatedUrl, err := validateUrl(params.Get("url"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+func handleCaptureRoute(w http.ResponseWriter, r *http.Request) {
+	// get supplied_url parameter
+	params := r.URL.Query()
 
-		// key for url in database / mutexes
-		urlKey := strings.TrimSuffix(validatedUrl, "/")
+	// validate url
+	validatedUrl, err := validateUrl(params.Get("url"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-		// lock the mutex associated with the url
-		// todo maybe change the url mutex map to store other useful things
-		// like status to avoid re-requests, or html for one min to avoid DoS
-		mutex := concurrency.GetOrCreateUrlMutex(urlKey)
-		mutex.Lock()
-		defer mutex.Unlock()
+	// key for url in database / mutexes
+	urlKey := strings.TrimSuffix(validatedUrl, "/")
 
-		// if _regen_ param is set, regenerate screenshot and return
-		if regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY")); regen {
-			slog.Debug("Regen key validated", "url", validatedUrl)
-			ok, pageCacheKey := checkUrlOk(validatedUrl)
-			if !ok {
-				http.Error(w, "Requested URL not found", http.StatusNotFound)
-				return
-			}
-			// take screenshot
-			if filepath, err := screenshot.Url(validatedUrl, urlKey, pageCacheKey, params); err == nil {
-				serveImage(w, r, filepath, "MISS", "1")
-			} else {
-				handleServerError(w, err)
-			}
-			return
-		}
+	// lock the mutex associated with the url
+	// todo maybe change the url mutex map to store other useful things
+	// like status to avoid re-requests, or html for one min to avoid DoS
+	mutex := concurrency.GetOrCreateUrlMutex(urlKey)
+	mutex.Lock()
+	defer mutex.Unlock()
 
-		paramCacheKey := params.Get("cache_key")
-		cachedImage, _ := database.GetImage(urlKey)
-
-		// has cached image
-		if cachedImage.File != "" {
-			// if no cache_key in request and found cached image, return cached image
-			// if cache_key param matches db cache key, return cached image
-			if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
-				slog.Debug("Found cached image", "url", validatedUrl, "cache_key", paramCacheKey)
-				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "2")
-				return
-			}
-		}
-
-		// should get here only if
-		// 1. image is not cached
-		// 2. cache_key param is provided and doesn't match db cache key
-
-		// check url response and cache_key before using browser
+	// if _regen_ param is set, regenerate screenshot and return
+	if regen := params.Get("_regen_") != "" && (params.Get("_regen_") == os.Getenv("REGEN_KEY")); regen {
+		slog.Debug("Regen key validated", "url", validatedUrl)
 		ok, pageCacheKey := checkUrlOk(validatedUrl)
 		if !ok {
 			http.Error(w, "Requested URL not found", http.StatusNotFound)
 			return
 		}
-
-		// if request has cache_key but pageCacheKey doesn't match
-		if paramCacheKey != "" && pageCacheKey != paramCacheKey {
-			slog.Debug("Cache key does not match", "url", validatedUrl, "request", paramCacheKey, "origin", pageCacheKey)
-			// return cached image if it exists
-			if cachedImage.File != "" {
-				serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "3")
-				return
-			}
-			// if no cached image, return error
-			http.Error(w, "request cache_key does not match origin cache_key", http.StatusBadRequest)
-			return
-		}
-
-		// if request doesn't meet above conditions, take screenshot
+		// take screenshot
 		if filepath, err := screenshot.Url(validatedUrl, urlKey, pageCacheKey, params); err == nil {
-			serveImage(w, r, filepath, "MISS", "0")
+			serveImage(w, r, filepath, "MISS", "1")
 		} else {
 			handleServerError(w, err)
 		}
-	})
+		return
+	}
 
-	return router
+	paramCacheKey := params.Get("cache_key")
+	cachedImage, _ := database.GetImage(urlKey)
+
+	// has cached image
+	if cachedImage.File != "" {
+		// if no cache_key in request and found cached image, return cached image
+		// if cache_key param matches db cache key, return cached image
+		if paramCacheKey == "" || paramCacheKey == cachedImage.CacheKey {
+			slog.Debug("Found cached image", "url", validatedUrl, "cache_key", paramCacheKey)
+			serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "2")
+			return
+		}
+	}
+
+	// should get here only if
+	// 1. image is not cached
+	// 2. cache_key param is provided and doesn't match db cache key
+
+	// check url response and cache_key before using browser
+	ok, pageCacheKey := checkUrlOk(validatedUrl)
+	if !ok {
+		http.Error(w, "Requested URL not found", http.StatusNotFound)
+		return
+	}
+
+	// if request has cache_key but pageCacheKey doesn't match
+	if paramCacheKey != "" && pageCacheKey != paramCacheKey {
+		slog.Debug("Cache key does not match", "url", validatedUrl, "request", paramCacheKey, "origin", pageCacheKey)
+		// return cached image if it exists
+		if cachedImage.File != "" {
+			serveImage(w, r, global.ImageDir+cachedImage.File, "HIT", "3")
+			return
+		}
+		// if no cached image, return error
+		http.Error(w, "request cache_key does not match origin cache_key", http.StatusBadRequest)
+		return
+	}
+
+	// if request doesn't meet above conditions, take screenshot
+	if filepath, err := screenshot.Url(validatedUrl, urlKey, pageCacheKey, params); err == nil {
+		serveImage(w, r, filepath, "MISS", "0")
+	} else {
+		handleServerError(w, err)
+	}
 }
 
 // cleans up old images and url mutexes, sleeps for an hour between cleaning cycles

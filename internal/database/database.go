@@ -16,7 +16,7 @@ import (
 var db *sql.DB
 var cleanInterval = os.Getenv("CACHE_TIME")
 
-type SocialImage struct {
+type CaptureImage struct {
 	Url      string
 	File     string
 	Date     string
@@ -50,7 +50,7 @@ func Init() {
 	Clean()
 }
 
-func AddImage(img *SocialImage) error {
+func AddImage(img *CaptureImage) error {
 	slog.Debug("Adding image to database", "url", img.Url)
 	// check if row with the same URL exists
 	var file string
@@ -83,8 +83,8 @@ func AddImage(img *SocialImage) error {
 	return nil
 }
 
-func GetImage(url string) (SocialImage, error) {
-	var image SocialImage
+func GetImage(url string) (CaptureImage, error) {
+	var image CaptureImage
 
 	row := db.QueryRow(`SELECT * FROM images WHERE url=?`, url)
 
