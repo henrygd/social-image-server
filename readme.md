@@ -29,7 +29,7 @@ The `/capture` endpoint generates a screen capture for any URL you pass in via t
 
 ### Template
 
-The `/template` endpoint renders any static webpage build using variables passed in via `url` query parameters.
+The `/template` endpoint renders any static webpage build using variables passed in via `url` parameters.
 
 <!-- prettier-ignore -->
 ```html

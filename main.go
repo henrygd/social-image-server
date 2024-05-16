@@ -177,7 +177,9 @@ func handleCaptureRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	paramCacheKey := params.Get("cache_key")
-	cachedImage, _ := database.GetImage(urlKey)
+	// check database for image
+	var cachedImage database.CaptureImage
+	database.GetImage(&cachedImage, urlKey)
 
 	// has cached image
 	if cachedImage.File != "" {
