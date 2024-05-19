@@ -1,8 +1,6 @@
 package scraper
 
 import (
-	"net/url"
-
 	"golang.org/x/net/html"
 )
 
@@ -29,14 +27,4 @@ func FindOgUrl(n *html.Node) string {
 		}
 	}
 	return ""
-}
-
-// extract the cache_key parameter from a URL
-func ExtractCacheKey(ogImageURL string) (string, error) {
-	ogImageURLParsed, err := url.Parse(ogImageURL)
-	if err != nil {
-		return "", err
-	}
-	cacheKey := ogImageURLParsed.Query().Get("cache_key")
-	return cacheKey, nil
 }

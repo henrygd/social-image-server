@@ -14,7 +14,6 @@ import (
 )
 
 var db *sql.DB
-var cleanInterval = os.Getenv("CACHE_TIME")
 
 type Image struct {
 	Url      string
@@ -23,28 +22,33 @@ type Image struct {
 	CacheKey string
 }
 
-func Init() {
-	// set default clean interval
-	if cleanInterval == "" {
-		cleanInterval = "30 days"
+func getCleanInterval() string {
+	if cleanInterval, ok := os.LookupEnv("CACHE_TIME"); ok {
+		return cleanInterval
 	}
+	return "30 days"
+}
 
-	slog.Debug("Initializing database", "CACHE_TIME", cleanInterval)
+func Init() {
+	slog.Debug("Initializing database", "CACHE_TIME", getCleanInterval())
 
 	var err error
 	db, err = sql.Open("sqlite", filepath.Join(global.DatabaseDir, "social-image-server.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = db.Exec(
+	if _, err = db.Exec(
 		`CREATE TABLE IF NOT EXISTS images (
 			url TEXT NOT NULL PRIMARY KEY,
 			file TEXT NOT NULL,
 			date DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-	)
-	if err != nil {
-		log.Fatal(err)
+	); err != nil {
+		log.Fatal("Error creating table:", err)
+	}
+	// add index to url column
+	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS url_index ON images (url);`); err != nil {
+		log.Fatal("Error creating index:", err)
 	}
 	runDatabaseUpdates()
 	Clean()
@@ -83,7 +87,7 @@ func AddImage(img *Image) error {
 	return nil
 }
 
-func GetImage(url string) (Image, error) {
+func GetImage(url string) (*Image, error) {
 	var image Image
 
 	row := db.QueryRow(`SELECT * FROM images WHERE url=?`, url)
@@ -93,13 +97,19 @@ func GetImage(url string) (Image, error) {
 		slog.Error(err.Error())
 	}
 
-	return image, err
+	return &image, err
 }
 
+// Cleans up expired database data by deleting rows and their corresponding files.
+//
+// It retrieves the expiration time from the environment variable "CACHE_TIME" or defaults to "30 days".
+//
+// Returns an error if there was a problem querying the database or deleting the files.
 func Clean() error {
 	slog.Debug("Cleaning expired database data")
+	cleanInterval := getCleanInterval()
 	// grab rows so we can delete the files
-	rows, err := db.Query(fmt.Sprintf(`SELECT file FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval))
+	rows, err := db.Query(fmt.Sprintf(`SELECT file FROM images WHERE date <= DATETIME('now', '-%s');`, cleanInterval))
 	if err != nil {
 		return err
 	}
@@ -115,7 +125,7 @@ func Clean() error {
 	}
 	// delete rows
 	_, err = db.Exec(
-		fmt.Sprintf(`DELETE FROM images WHERE date < DATETIME('now', '-%s');`, cleanInterval),
+		fmt.Sprintf(`DELETE FROM images WHERE date <= DATETIME('now', '-%s');`, cleanInterval),
 	)
 	if err != nil {
 		return err
@@ -139,10 +149,5 @@ func runDatabaseUpdates() {
 		if !strings.Contains(err.Error(), "duplicate column") {
 			log.Fatal("Error adding cache_key column:", err)
 		}
-	}
-	// add index to url column
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS url_index ON images (url);`)
-	if err != nil {
-		log.Fatal("Error creating index:", err)
 	}
 }

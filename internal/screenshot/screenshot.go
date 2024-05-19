@@ -15,9 +15,10 @@ import (
 	"github.com/henrygd/social-image-server/internal/browsercontext"
 	"github.com/henrygd/social-image-server/internal/database"
 	"github.com/henrygd/social-image-server/internal/global"
+	"github.com/henrygd/social-image-server/internal/templates"
 )
 
-func getViewportDimensions(params url.Values) (viewportWidth int64, viewportHeight int64, scale float64) {
+func getViewportDimensions(params *url.Values) (viewportWidth int64, viewportHeight int64, scale float64) {
 	paramWidth := params.Get("width")
 	if paramWidth != "" {
 		viewportWidth, _ = strconv.ParseInt(paramWidth, 10, 64)
@@ -36,7 +37,7 @@ func getViewportDimensions(params url.Values) (viewportWidth int64, viewportHeig
 	return viewportWidth, viewportHeight, scale
 }
 
-func getDelay(params url.Values) (delay int64) {
+func getDelay(params *url.Values) (delay int64) {
 	paramDelay := params.Get("delay")
 	if paramDelay != "" {
 		delay, _ = strconv.ParseInt(paramDelay, 10, 64)
@@ -47,7 +48,7 @@ func getDelay(params url.Values) (delay int64) {
 	return delay
 }
 
-func getImageFormat(params url.Values) (imageFormat string, imageExtension string) {
+func getImageFormat(params *url.Values) (imageFormat string, imageExtension string) {
 	paramFormat := params.Get("format")
 	if paramFormat == "png" {
 		return "png", ".png"
@@ -73,7 +74,7 @@ func getContext() (taskCtx context.Context, cancel context.CancelFunc, resetBrow
 //
 // It accepts the validated URL as a string and parameters for the screenshot.
 // Returns the filepath of the saved screenshot and any error encountered.
-func takeScreenshot(validatedUrl string, params url.Values) (filepath string, err error) {
+func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, err error) {
 	imageOptions := &global.ImageOptions
 
 	// get viewport dimensions
@@ -140,15 +141,14 @@ func takeScreenshot(validatedUrl string, params url.Values) (filepath string, er
 	return filepath, nil
 }
 
-// Url generates a screenshot of a URL.
+// Generates a screenshot of a URL.
 //
 // Parameters:
 // - validatedUrl: the validated URL for the screenshot
-// - urlKey: the key associated with the URL
-// - pageCacheKey: the cache key for the page
+// - urlKey: key for url in database / mutexes
+// - cacheKey: the cache key to be saved in the database
 // - params: additional parameters for the screenshot
-// Returns the file path where the screenshot is saved and any error encountered.
-func Url(validatedUrl string, urlKey string, pageCacheKey string, params url.Values) (filepath string, err error) {
+func Capture(validatedUrl, urlKey, cacheKey string, params *url.Values) (filepath string, err error) {
 	slog.Debug("Taking screenshot", "url", validatedUrl)
 
 	validatedUrl += "?og-image-request=true"
@@ -159,10 +159,10 @@ func Url(validatedUrl string, urlKey string, pageCacheKey string, params url.Val
 	}
 
 	// add image to database
-	err = database.AddImage(&database.CaptureImage{
+	err = database.AddImage(&database.Image{
 		Url:      urlKey,
 		File:     strings.TrimPrefix(filepath, global.ImageDir),
-		CacheKey: pageCacheKey,
+		CacheKey: cacheKey,
 	})
 	if err != nil {
 		return "", err
@@ -171,15 +171,37 @@ func Url(validatedUrl string, urlKey string, pageCacheKey string, params url.Val
 	return filepath, nil
 }
 
-// Template generates a screenshot of a template.
+// Generates a screenshot of a template.
 //
-// serverUrl: the URL of the server serving template
-// params: additional parameters for the screenshot
-// Returns the file path where the screenshot is saved and any error encountered.
-func Template(serverUrl string, params url.Values) (filepath string, err error) {
-	// add params to serverUrl
+// Parameters:
+// - validatedUrl: the validated URL for the screenshot
+// - urlKey: key for url in database / mutexes
+// - cacheKey: the cache key to be saved in the database
+// - params: additional parameters for the screenshot
+func Template(templateName, urlKey, cacheKey string, params *url.Values) (filepath string, err error) {
+	// start static server to serve template
+	server, err := templates.TempServer(templateName)
+	if err != nil {
+		return "", err
+	}
+	defer server.Close()
+	defer slog.Debug("Template server stopped")
+	serverUrl := "http://" + server.Addr
+	slog.Debug("Taking screenshot", "template", templateName)
+
+	// add params to serverUrl and take screenshot
 	serverUrl += "?" + params.Encode()
 	filepath, err = takeScreenshot(serverUrl, params)
+	if err != nil {
+		return "", err
+	}
+
+	// add image to database
+	err = database.AddImage(&database.Image{
+		Url:      urlKey,
+		File:     strings.TrimPrefix(filepath, global.ImageDir),
+		CacheKey: cacheKey,
+	})
 	if err != nil {
 		return "", err
 	}

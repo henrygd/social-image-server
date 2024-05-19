@@ -4,12 +4,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 
 	"github.com/henrygd/social-image-server/internal/global"
 )
 
-func TempServer(templateName string) (*http.Server, net.Listener, error) {
+func TempServer(templateName string) (*http.Server, error) {
 	// Serve static files from template directory
 	fs := http.FileServer(http.Dir(filepath.Join(global.TemplateDir, templateName)))
 	// Create a new ServeMux and handle root path
@@ -19,13 +20,8 @@ func TempServer(templateName string) (*http.Server, net.Listener, error) {
 	// Create a listener on a random port
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		// slog.Error("Creating template listener", "error", err)
-		return nil, nil, err
+		return nil, err
 	}
-
-	// Get the actual address (with the assigned port)
-	// addr := listener.Addr().String()
-	// slog.Debug("Server is listening on %s\n", addr)
 
 	server := &http.Server{
 		Addr:    listener.Addr().String(),
@@ -39,6 +35,15 @@ func TempServer(templateName string) (*http.Server, net.Listener, error) {
 		}
 	}()
 
-	return server, listener, nil
+	return server, nil
+}
 
+func IsValid(templateName string) bool {
+	entries, _ := os.ReadDir(global.TemplateDir)
+	for _, entry := range entries {
+		if entry.Name() == templateName {
+			return true
+		}
+	}
+	return false
 }
