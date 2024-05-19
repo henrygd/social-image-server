@@ -10,7 +10,7 @@ import (
 	"github.com/henrygd/social-image-server/internal/global"
 )
 
-func TempServer(templateName string) (*http.Server, error) {
+func TempServer(templateName string) (server *http.Server, serverURL string, err error) {
 	// Serve static files from template directory
 	fs := http.FileServer(http.Dir(filepath.Join(global.TemplateDir, templateName)))
 	// Create a new ServeMux and handle root path
@@ -20,10 +20,10 @@ func TempServer(templateName string) (*http.Server, error) {
 	// Create a listener on a random port
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	server := &http.Server{
+	server = &http.Server{
 		Addr:    listener.Addr().String(),
 		Handler: router,
 	}
@@ -35,7 +35,7 @@ func TempServer(templateName string) (*http.Server, error) {
 		}
 	}()
 
-	return server, nil
+	return server, "http://" + server.Addr, nil
 }
 
 func IsValid(templateName string) bool {

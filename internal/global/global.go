@@ -3,15 +3,17 @@ package global
 import (
 	"log"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 )
 
-var DataDir string
 var DatabaseDir string
 var ImageDir string
 var TemplateDir string
+var RegenKey string
+var AllowedDomainsMap map[string]bool
 
 var ImageOptions = struct {
 	Format    string
@@ -23,6 +25,14 @@ var ImageOptions = struct {
 	Extension: ".jpg",
 	Quality:   92,
 	Width:     2000,
+}
+
+type ReqData struct {
+	ValidatedURL string
+	UrlKey       string
+	CacheKey     string
+	Params       url.Values
+	Template     string
 }
 
 func Init() (dataDir string) {
@@ -68,6 +78,8 @@ func Init() (dataDir string) {
 			os.Exit(1)
 		}
 	}
+	// set regen key
+	RegenKey = os.Getenv("REGEN_KEY")
 
 	return dataDir
 }

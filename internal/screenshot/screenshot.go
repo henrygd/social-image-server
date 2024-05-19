@@ -3,6 +3,7 @@ package screenshot
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -77,12 +78,8 @@ func getContext() (taskCtx context.Context, cancel context.CancelFunc, resetBrow
 func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, err error) {
 	imageOptions := &global.ImageOptions
 
-	// get viewport dimensions
 	viewportWidth, viewportHeight, scale := getViewportDimensions(params)
-
-	// get delay
 	delay := getDelay(params)
-
 	imageFormat, imageExtension := getImageFormat(params)
 
 	// get context
@@ -116,7 +113,6 @@ func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, e
 		// chromedp.Emulate(device.IPad),
 		chromedp.EmulateViewport(viewportWidth, viewportHeight, chromedp.EmulateScale(scale)),
 		chromedp.Navigate(validatedUrl),
-		// chromedp.Evaluate(`document.documentElement.style.overflow = 'hidden'`, nil),
 	)
 	// add delay
 	if delay != 0 {
@@ -142,68 +138,41 @@ func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, e
 }
 
 // Generates a screenshot of a URL.
-//
-// Parameters:
-// - validatedUrl: the validated URL for the screenshot
-// - urlKey: key for url in database / mutexes
-// - cacheKey: the cache key to be saved in the database
-// - params: additional parameters for the screenshot
-func Capture(validatedUrl, urlKey, cacheKey string, params *url.Values) (filepath string, err error) {
-	slog.Debug("Taking screenshot", "url", validatedUrl)
+func Take(req *global.ReqData) (filepath string, err error) {
+	if req.Template == "" {
+		slog.Debug("Taking screenshot", "url", req.ValidatedURL)
+		req.ValidatedURL += "?og-image-request=true"
+		filepath, err = takeScreenshot(req.ValidatedURL, &req.Params)
+	}
 
-	validatedUrl += "?og-image-request=true"
+	// if requesting template, start temp server for the screenshot
+	if req.Template != "" {
+		slog.Debug("Taking screenshot", "template", req.Template)
+		var server *http.Server
+		var serverURL string
+		server, serverURL, err = templates.TempServer(req.Template)
+		if err != nil {
+			return "", err
+		}
+		defer server.Close()
+		defer slog.Debug("Template server stopped", "template", req.Template)
+		serverURL += "?" + req.Params.Encode()
+		filepath, err = takeScreenshot(serverURL, &req.Params)
+	}
 
-	filepath, err = takeScreenshot(validatedUrl, params)
 	if err != nil {
 		return "", err
 	}
 
 	// add image to database
 	err = database.AddImage(&database.Image{
-		Url:      urlKey,
+		Url:      req.UrlKey,
 		File:     strings.TrimPrefix(filepath, global.ImageDir),
-		CacheKey: cacheKey,
+		CacheKey: req.CacheKey,
 	})
 	if err != nil {
 		return "", err
 	}
 
-	return filepath, nil
-}
-
-// Generates a screenshot of a template.
-//
-// Parameters:
-// - validatedUrl: the validated URL for the screenshot
-// - urlKey: key for url in database / mutexes
-// - cacheKey: the cache key to be saved in the database
-// - params: additional parameters for the screenshot
-func Template(templateName, urlKey, cacheKey string, params *url.Values) (filepath string, err error) {
-	// start static server to serve template
-	server, err := templates.TempServer(templateName)
-	if err != nil {
-		return "", err
-	}
-	defer server.Close()
-	defer slog.Debug("Template server stopped")
-	serverUrl := "http://" + server.Addr
-	slog.Debug("Taking screenshot", "template", templateName)
-
-	// add params to serverUrl and take screenshot
-	serverUrl += "?" + params.Encode()
-	filepath, err = takeScreenshot(serverUrl, params)
-	if err != nil {
-		return "", err
-	}
-
-	// add image to database
-	err = database.AddImage(&database.Image{
-		Url:      urlKey,
-		File:     strings.TrimPrefix(filepath, global.ImageDir),
-		CacheKey: cacheKey,
-	})
-	if err != nil {
-		return "", err
-	}
 	return filepath, nil
 }
