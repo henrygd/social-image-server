@@ -1,6 +1,8 @@
 # Social Image Server
 
-Automatically generate unique OG images for every page of your website.
+Self-hosted server to automatically generate unique OG images for every page of your website.
+
+The server itself requires relatively few resources, and can stop the headless browser process if it hasn't been used to generate a new image in a certain time period.
 
 ## Endpoints
 
@@ -29,11 +31,11 @@ The `/capture` endpoint generates a screen capture for any URL you pass in via t
 
 ### Template
 
-The `/template` endpoint renders any static webpage build using variables passed in via `url` parameters.
+The `/template` endpoint renders any static web build using variables passed in via querys parameters.
 
 <!-- prettier-ignore -->
 ```html
-<meta property="og:image" content="https://your-server/template?t=the-drive&title=Tire Dust Makes Up The Majority of Ocean Microplastics&subhead=Researchers say tire emissions pose a threat to global health, and EVs could make the problem worse.&author=Lewin Day&date=September 28, 2023&img=https://thedrive.com/uploads/2023/09/28/GettyImages-1428297317.jpg" />
+<meta property="og:image" content="https://your-server/template/example?title=Tire+Dust+Makes+Up+The+Majority+of+Ocean+Microplastics&subhead=Researchers+say+tire+emissions+pose+a+threat+to+global+health%2C+and+EVs+could+make+the+problem+worse.&author=Lewin+Day&date=September+28%2C+2023&img=https%3A%2F%2Fthedrive.com%2Fuploads%2F2023%2F09%2F28%2FGettyImages-1428297317.jpg" />
 ```
 
 <table width="100%">
@@ -54,7 +56,7 @@ The `/template` endpoint renders any static webpage build using variables passed
 ## Installation
 
 > [!TIP]
-> While both versions function similarly, the binary has one advantage in that it can shut down the headless browser if it hasn't been used to generate an image in a certain time period. See [FAQ](#does-this-require-chrome--chromium-running-in-the-background-indefinitely) for more info.
+> While both versions function similarly, the binary has an advantage in that it can shut down the headless browser if it hasn't been used to generate an image in a certain time period. See [FAQ](#does-this-require-chrome--chromium-running-in-the-background-indefinitely) for more info.
 
 ### Binary
 
@@ -74,36 +76,53 @@ It may be possible to use a native Chrome / Chromium installation by giving the 
 
 ## Usage
 
-The `/capture` endpoint generates an image for any URL you pass in via the `url` query parameter.
-
-Add an `og:image` meta tag into the `<head>` of your website:
+Add an `og:image` meta tag in the `<head>` of your website that points to your server.
 
 ```html
-<meta property="og:image" content="https://yourserver.com/capture?url=example.com" />
+<meta property="og:image" content="https://yourserver.com/capture?url=example.com/current-page" />
 ```
 
 It's best to add this once in a layout template, rather than doing it for every page. See [Framework Examples](#framework-examples).
 
-A useful site for previewing or generating boilerplate HTML is [heymeta.com](https://www.heymeta.com/).
+A useful site for previewing or generating boilerplate HTML is [metatags.io](https://metatags.io/).
+
+### Templates
+
+Templates are just static webpages -- like the output of `vite build` -- that render URL query parameters in the content.
+
+You can use any web framework to create templates. I made the example above using Vite, Svelte, and Tailwind ([see repository](https://github.com/henrygd/social-image-server-template/blob/main/src/App.svelte)). The [build command](https://vitejs.dev/guide/build) generates the static files.
+
+To add a template, create a folder containing your files in the `data/templates` directory. If your folder is called `my-template`, it would then be available at `/template/my-template`. No need to restart the server.
+
+A `url` query parameter is still required for templates. It is used to prevent abuse by verifying that the requested image matches the image used on the origin URL. If you're just testing, use `_regen_` to skip verification and a dummy string like "test" as the url.
+
+Please ensure that your query parameters are encoded in your request. You can use `encodeURIComponent` in JavaScript, `url.QueryEscape` in Go, `urlencode` in PHP, `urllib.parse.quote` in Python, `URLEncoder.encode` in Java, etc.
+
+### Cache
+
+You can refresh the cache for a URL by changing any query parameter (or template name if applicable).
+
+If incoming request parameters don't match the cache, the server will verify that params on the origin URL have changed and generate a new image.
+
+See [Framework Examples](#framework-examples) for examples of a version parameter that automatically refreshes the cache on new website builds.
 
 ## URL Parameters
 
-| Name        | Default | Description                                                                                                                                                                                     |
-| ----------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`       | -       | URL to generate image for.                                                                                                                                                                      |
-| `width`     | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to `IMG_WIDTH` width.                                                                                                    |
-| `delay`     | 0       | Delay in milliseconds after page load before generating image.                                                                                                                                  |
-| `dark`      | false   | Sets prefers-color-scheme to dark.                                                                                                                                                              |
-| `format`    | -       | Image format. Defaults to `IMG_FORMAT` value if not specified.                                                                                                                                  |
-| `cache_key` | -       | Regenerates image if changed. This is validated using your origin URL. If the `cache_key` doesn't match, the server will return a previously cached image (or error if no cached image exists). |
-| `_regen_`   | -       | Do not use in public URLs. Forces full regeneration on every request. Use to manually purge a URL or tweak params, then remove. Must match `REGEN_KEY` value.                                   |
+| Name      | Default | Description                                                                                                                                     |
+| --------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`     | -       | URL to generate image for and verify against.                                                                                                   |
+| `width`   | 1400    | Width of browser viewport in pixels (max 2500). Output image is scaled to `IMG_WIDTH` width.                                                    |
+| `delay`   | 0       | Delay in milliseconds after page load before generating image.                                                                                  |
+| `dark`    | false   | Sets prefers-color-scheme to dark.                                                                                                              |
+| `format`  | -       | Image format. Defaults to `IMG_FORMAT` value if not specified.                                                                                  |
+| `_regen_` | -       | Do not use in public URLs. Testing only. Skips origin verification and forces full regeneration on every request. Must match `REGEN_KEY` value. |
 
 ## Environment Variables
 
 | Name              | Default | Description                                                                                                                        |
 | ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `ALLOWED_DOMAINS` | -       | Restrict to certain domains. Example: "example.com,example.org"                                                                    |
-| `CACHE_TIME`      | 30 days | Time to cache images on server.                                                                                                    |
+| `CACHE_TIME`      | 30 days | Time to cache images on server. Minimum 1 hour.                                                                                    |
 | `DATA_DIR`        | ./data  | Directory to store program data (images and database).                                                                             |
 | `FONT_FAMILY`     | -       | Change browser fallback font. Must be available on your system / image.                                                            |
 | `IMG_FORMAT`      | jpeg    | Default format if not specified in request. Valid values: "jpeg", "png".                                                           |
@@ -143,11 +162,15 @@ If you are using a remote browser, try setting the `--system-font-family` flag. 
 
 From what I can tell, Facebook and LinkedIn (and likely others) don't support webp open graph images. If I'm wrong, let me know and I'll add it.
 
+### I changed my image but Twitter is still showing the old one
+
+Twitter seems to cache images for a long time. Try adding or removing a trailing slash, query parameter, or fragment to the URL in your tweet.
+
 ## Remote Browser Instance
 
-Use the `REMOTE_URL` environment variable to connect to an existing instance of Chrome.
+Use the `REMOTE_URL` environment variable to connect to an existing instance of Chrome or Chromium.
 
-This is only necessary / recommended if you're using docker or you don't want to install Chromium.
+This is only necessary if you're using docker or don't want to install Chromium. The server cannot stop / start your remote browser, so it will need to run independently for the lifetime of the server.
 
 ### Examples
 
@@ -157,9 +180,7 @@ Using the chromedp `headless-shell` docker image (see [docker-compose.yml](https
 docker run -d -p 127.0.0.1:9222:9222 --rm chromedp/headless-shell:latest
 ```
 
-Using Chrome directly (most flags are from [chromedp's default options](https://pkg.go.dev/github.com/chromedp/chromedp@v0.9.5#pkg-variables)).
-
-If using docker, you'll need to give your container access to your host's ports.
+Using Chrome directly (most flags are from [chromedp's default options](https://pkg.go.dev/github.com/chromedp/chromedp@v0.9.5#pkg-variables)). If using docker, you'll need to give your container access to your host's ports.
 
 ```sh
 google-chrome-stable --remote-debugging-port=9222 --headless=new --hide-scrollbars --font-render-hinting=none --disable-background-networking --enable-features=NetworkService,NetworkServiceInProcess --disable-extensions --disable-breakpad --disable-backgrounding-occluded-windows --disable-default-apps --disable-background-timer-throttling --disable-features=site-per-process,Translate,BlinkGenPropertyTrees --disable-hang-monitor --disable-client-side-phishing-detection --disable-popup-blocking --disable-prompt-on-repost --disable-sync --disable-translate --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain
@@ -178,20 +199,20 @@ The server includes status headers for successful image requests.
 
 ### X-Og-Code
 
-| Value | Description                                                                          |
-| ----- | ------------------------------------------------------------------------------------ |
-| 0     | New image generated because it did not exist in cache                                |
-| 1     | New image generated due to `_regen_` parameter                                       |
-| 2     | Found matching cached image                                                          |
-| 3     | `cache_key` does not match `cache_key` on origin URL. Using previously cached image. |
+| Value | Description                                                                   |
+| ----- | ----------------------------------------------------------------------------- |
+| 0     | New image generated because it did not exist in cache                         |
+| 1     | New image generated due to `_regen_` parameter                                |
+| 2     | Found matching cached image                                                   |
+| 3     | Request does not match og:image on origin URL. Using previously cached image. |
 
 ## Framework examples
 
-These examples use an automatically updated `cache_key` when possible, but you can replace the value with any string, or just remove it.
-
-Feel free to improve these or contribute others.
+These examples use a query parameter `v` to bypass cache on new builds, but you can remove it if you don't need that functionality. Feel free to improve these or contribute others.
 
 ### SvelteKit
+
+Make sure you set your website's origin in [prerender settings](https://kit.svelte.dev/docs/configuration#prerender).
 
 ```svelte
 <!-- +layout.svelte -->
@@ -203,7 +224,7 @@ Feel free to improve these or contribute others.
 <sveltekit:head>
   <meta
     property="og:image"
-    content="https://your-server/capture?url=yourdomain.com{$page.url.pathname}&cache_key={version}"
+    content="https://your-server/capture?url={$page.url.toString()}&v={version}"
   />
 </sveltekit:head>
 ```
@@ -217,7 +238,10 @@ import {version} from '../../package.json';
 ---
 
 <head>
-  <meta property="og:image" content={`https://your-server/capture?url=${Astro.url}&cache_key=${version}`} />
+  <meta
+    property="og:image"
+    content={`https://your-server/capture?url=${Astro.url}&v=${version}`}
+  />
 </head>
 ```
 
@@ -228,24 +252,10 @@ import {version} from '../../package.json';
 <?php
   $page_url = home_url($_SERVER['REQUEST_URI']);
   $version = wp_get_theme()->get('Version');
-  $og_image_url = "https://your-server/capture?url=$page_url&cache_key=$version";
+  $og_image_url = "https://your-server/capture?url=$page_url&v=$version";
 ?>
 
 <head>
   <meta property="og:image" content="<?php echo $og_image_url ?>"/>
 </head>
 ```
-
-## Future additions
-
-If you have any feedback or ideas for improvement, please [post a new discussion](https://github.com/henrygd/social-image-server/discussions).
-
-I'm thinking about a `/template` endpoint that allows you to render custom templates.
-
-You would make a static page / site -- like an html file or output of `vite build` -- using variables like `<h1>{{title}}</h1>` `<p>{{author}}</p>`, then put it in `data/templates`.
-
-A request to `/template?t=my-template&title=Doh!&author=Homer` would render `data/templates/my-template` with `Doh!` and `Homer` and return the image.
-
-<!-- personal note: for security we could require the origin url be passed in, then we could check that the origin is in the whitelist and the html contains the request (override with _regen_). similar to cache_key. -->
-
-These templates could also be shared with other users.
