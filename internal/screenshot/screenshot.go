@@ -31,8 +31,8 @@ func getViewportDimensions(params *url.Values) (viewportWidth int64, viewportHei
 	} else if viewportWidth < 400 {
 		viewportWidth = 400
 	}
-	// force 1.9:1 aspect ratio
-	viewportHeight = int64(float64(viewportWidth) / 1.9)
+	// force facebook's recommended 1200/630 aspect ratio
+	viewportHeight = int64((float64(viewportWidth) * 0.525))
 	// calculate scale to make image 2000px wide
 	scale = global.ImageOptions.Width / float64(viewportWidth)
 	return viewportWidth, viewportHeight, scale

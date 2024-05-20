@@ -34,11 +34,12 @@ func Init() {
 	if persistBrowser == "" {
 		persistBrowser = "5m"
 	}
-	slog.Debug("PERSIST_BROWSER", "value", persistBrowser)
 	duration, err := time.ParseDuration(persistBrowser)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error(err.Error(), "PERSIST_BROWSER", persistBrowser)
+		os.Exit(1)
 	}
+	slog.Debug("PERSIST_BROWSER", "value", persistBrowser)
 	persistBrowserDuration = duration
 
 	// set up allocator

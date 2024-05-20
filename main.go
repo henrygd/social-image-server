@@ -21,6 +21,7 @@ import (
 	"github.com/henrygd/social-image-server/internal/screenshot"
 	"github.com/henrygd/social-image-server/internal/templates"
 	"github.com/henrygd/social-image-server/internal/update"
+	"golang.org/x/net/html"
 )
 
 var version = "0.0.6"
@@ -136,13 +137,15 @@ func handleImageRequest(w http.ResponseWriter, r *http.Request) {
 
 	// if _regen_ param is valid, regenerate screenshot and return
 	if isRegenRequest(&reqData.Params) {
-		slog.Debug("Regen key validated", "template", reqData.Template)
-		// if reqData.Template == "" {
-		// 	if ok, _ := checkUrlOk(reqData.ValidatedURL); !ok {
-		// 		http.Error(w, "Could not connect to origin URL", http.StatusBadGateway)
-		// 		return
-		// 	}
-		// }
+		if reqData.Template != "" {
+			slog.Debug("Regen key validated", "template", reqData.Template)
+		} else {
+			slog.Debug("Regen key validated", "url", reqData.ValidatedURL)
+			// if ok, _ := checkUrlOk(reqData.ValidatedURL); !ok {
+			// 	http.Error(w, "Could not connect to origin URL", http.StatusBadGateway)
+			// 	return
+			// }
+		}
 		if filepath, err := screenshot.Take(&reqData); err == nil {
 			serveImage(w, r, filepath, "MISS", "1")
 		} else {
@@ -253,13 +256,13 @@ func checkUrlOk(validatedUrl string) (ok bool, ogImageUrl string) {
 	if err != nil {
 		return false, ""
 	}
-	defer resp.Body.Close()
 	// Check if the status code is 200 OK
 	if ok := resp.StatusCode == http.StatusOK; !ok {
 		return false, ""
 	}
 	// Parse the HTML response
-	doc, err := scraper.Parse(resp.Body)
+	defer resp.Body.Close()
+	doc, err := html.Parse(resp.Body)
 	if err != nil {
 		return false, ""
 	}
@@ -280,14 +283,13 @@ func makeCacheKey(input interface{}) string {
 	default:
 		return ""
 	}
-	if !strings.HasPrefix(u.Path, "/template") {
-		// we don't need path for capture route and this maintains
-		// consistency with images cached using /get
-		u.Path = ""
-	}
 	params := u.Query()
 	params.Del("_regen_")
-	return u.Path + params.Encode()
+	if strings.HasPrefix(u.Path, "/template/") {
+		return strings.TrimPrefix(u.Path, "/template/") + params.Encode()
+	} else {
+		return params.Encode()
+	}
 }
 
 func handleServerError(w http.ResponseWriter, err error) {

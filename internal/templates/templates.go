@@ -2,6 +2,7 @@ package templates
 
 import (
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 )
 
 func TempServer(templateName string) (server *http.Server, serverURL string, err error) {
+	slog.Debug("Starting temp server", "template", templateName)
 	// Serve static files from template directory
 	fs := http.FileServer(http.Dir(filepath.Join(global.TemplateDir, templateName)))
 	// Create a new ServeMux and handle root path

@@ -4,8 +4,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-var Parse = html.Parse
-
 // find og:image meta tag and extract the content attribute
 func FindOgUrl(n *html.Node) string {
 	if n.Type == html.ElementNode && n.Data == "meta" {
