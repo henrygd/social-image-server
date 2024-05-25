@@ -1,22 +1,16 @@
-version: '3.9'
-
 services:
   server:
     image: 'henrygd/social-image-server'
     container_name: 'social-image-server'
-    ports: ['8080:8080']
-    # volumes:
-    # - ./data:/data # mounts images / db to disk
-    environment:
-      - REMOTE_URL=ws://chromedp:9222
-      - REGEN_KEY=x4hkg3ky8b73 # change this
-
-  browser:
-    image: 'chromedp/headless-shell:latest'
-    container_name: 'chromedp'
-    command: ['--system-font-family=Cantarell', '--font-render-hinting=none', '--hide-scrollbars']
-    # mounting fonts in the container is optional but recommended
-    # DejaVu Sans is the only default font provided by the image
-    # use the flag above to specify a different font, not the env var
+    init: true
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
     volumes:
-      - /usr/share/fonts:/usr/share/fonts/host:ro
+      - ./data:/data # db / images / templates
+    # Mounting fonts in the container is optional
+    # DejaVu is the only font family provided by the image
+    # - /usr/share/fonts:/usr/share/fonts/host:ro # fonts
+    environment:
+      - REGEN_KEY=x4hkg3ky8b73 # change this
+      # - FONT_FAMILY=Inter # override fallback font family

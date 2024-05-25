@@ -14,7 +14,15 @@ ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags "-w -s" -o /social-image-server .
 
 # ? -------------------------
-FROM alpine:latest
+FROM chromedp/headless-shell:latest
+
+# add ca-certificates
+RUN export DEBIAN_FRONTEND=noninteractive \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/
 
 COPY --from=builder /social-image-server /
 
