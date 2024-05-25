@@ -24,7 +24,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-var version = "0.0.6"
+var version = "0.1.0"
 
 func main() {
 	// handle flags
