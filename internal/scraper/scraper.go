@@ -1,8 +1,23 @@
 package scraper
 
 import (
+	"net/http"
+	"time"
+
 	"golang.org/x/net/html"
 )
+
+var client *http.Client
+
+// Returns http.Client with 10 second timeout
+func GetClient() *http.Client {
+	if client == nil {
+		client = &http.Client{
+			Timeout: 10 * time.Second,
+		}
+	}
+	return client
+}
 
 // find og:image meta tag and extract the content attribute
 func FindOgUrl(n *html.Node) string {

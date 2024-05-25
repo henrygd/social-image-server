@@ -60,34 +60,19 @@ func getImageFormat(params *url.Values) (imageFormat string, imageExtension stri
 	return global.ImageOptions.Format, global.ImageOptions.Extension
 }
 
-// getContext checks if the browser is remote or local and gets the corresponding context and functions.
-func getContext() (taskCtx context.Context, cancel context.CancelFunc, resetBrowserTimer func()) {
-	if browsercontext.IsRemoteBrowser {
-		// if using remote browser, use remote context
-		taskCtx, cancel = browsercontext.GetRemoteContext()
-	} else {
-		taskCtx, cancel, resetBrowserTimer = browsercontext.GetTaskContext()
-	}
-	return taskCtx, cancel, resetBrowserTimer
-}
-
 // takeScreenshot takes a screenshot of a webpage.
 //
 // It accepts the validated URL as a string and parameters for the screenshot.
 // Returns the filepath of the saved screenshot and any error encountered.
 func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, err error) {
-	imageOptions := &global.ImageOptions
-
 	viewportWidth, viewportHeight, scale := getViewportDimensions(params)
 	delay := getDelay(params)
 	imageFormat, imageExtension := getImageFormat(params)
 
 	// get context
-	taskCtx, cancel, resetBrowserTimer := getContext()
+	taskCtx, cancel := browsercontext.GetTaskContext()
 	defer cancel()
-	if resetBrowserTimer != nil {
-		defer resetBrowserTimer()
-	}
+	defer browsercontext.TaskCleanup()
 
 	// create file for screenshot
 	f, err := os.CreateTemp(global.ImageDir, "*"+imageExtension)
@@ -121,7 +106,7 @@ func takeScreenshot(validatedUrl string, params *url.Values) (filepath string, e
 	// take screenshot
 	tasks = append(tasks, chromedp.ActionFunc(func(ctx context.Context) error {
 		format := page.CaptureScreenshotFormat(imageFormat)
-		buf, err := page.CaptureScreenshot().WithFormat(format).WithQuality(imageOptions.Quality).Do(ctx)
+		buf, err := page.CaptureScreenshot().WithFormat(format).WithQuality(global.ImageOptions.Quality).Do(ctx)
 		if err != nil {
 			return err
 		}

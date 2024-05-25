@@ -241,27 +241,25 @@ func validateUrl(suppliedUrl string) (string, error) {
 	return u.Scheme + "://" + u.Host + u.Path, nil
 }
 
-// Check if the status code of a url is 200 OK and extract the page's og image url
-// possible to do in browser but this is more efficient for 404s / bad cache keys
+// Check if the status code of a url is 200 and extract the page's og image url.
+// Possible to do in browser but more efficient to avoid that if unnecessary.
 func checkUrlOk(validatedUrl string) (ok bool, ogImageUrl string) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	// prepare the request
 	req, err := http.NewRequest("GET", validatedUrl, nil)
 	if err != nil {
 		return false, ""
 	}
 	// make the request
-	resp, err := client.Do(req)
+	resp, err := scraper.GetClient().Do(req)
 	if err != nil {
 		return false, ""
 	}
-	// Check if the status code is 200 OK
+	defer resp.Body.Close()
+	// check if the status code is 200
 	if ok := resp.StatusCode == http.StatusOK; !ok {
 		return false, ""
 	}
-	// Parse the HTML response
-	defer resp.Body.Close()
+	// parse the response
 	doc, err := html.Parse(resp.Body)
 	if err != nil {
 		return false, ""
