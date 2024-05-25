@@ -31,12 +31,14 @@ func getCleanInterval() string {
 
 func Init() {
 	slog.Debug("Initializing database", "CACHE_TIME", getCleanInterval())
-
 	var err error
 	db, err = sql.Open("sqlite", filepath.Join(global.DatabaseDir, "social-image-server.db"))
 	if err != nil {
 		log.Fatal(err)
 	}
+	// limit open connections to avoid SQLITE_BUSY
+	db.SetMaxOpenConns(1)
+	// create table
 	if _, err = db.Exec(
 		`CREATE TABLE IF NOT EXISTS images (
 			url TEXT NOT NULL PRIMARY KEY,
